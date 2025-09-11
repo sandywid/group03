@@ -166,18 +166,18 @@ def create_app():
         if "file" not in request.files:
             return jsonify({"error": "file is required (multipart/form-data)"}), 400
         file = request.files["file"]
-        if not file or file.filename == "":
-            return jsonify({"error": "empty filename"}), 400
 
+# --- PDF check ---      
+        if not file or file.filename == "": 
+            return jsonify({"error": "empty filename"}), 400
         if not file.filename.lower().endswith(".pdf"):
             return jsonify({"error": "only PDF files are allowed (wrong extension)"}), 400
-
         if file.mimetype != "application/pdf":
             return jsonify({"error": "only PDF files are allowed (wrong mimetype)"}), 400
 
-# Kolla PDF-signaturen
+    # Read a few bytes to verify the PDF signature
         head = file.read(5)
-        file.seek(0)
+        file.seek(0) # Seek back so the entire file can be saved later
         if head != b"%PDF-":
             return jsonify({"error": "file is not a valid PDF"}), 400
 
