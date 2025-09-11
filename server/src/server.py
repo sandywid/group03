@@ -169,6 +169,19 @@ def create_app():
         if not file or file.filename == "":
             return jsonify({"error": "empty filename"}), 400
 
+        if not file.filename.lower().endswith(".pdf"):
+            return jsonify({"error": "only PDF files are allowed (wrong extension)"}), 400
+
+        if file.mimetype != "application/pdf":
+            return jsonify({"error": "only PDF files are allowed (wrong mimetype)"}), 400
+
+# Kolla PDF-signaturen
+        head = file.read(5)
+        file.seek(0)
+        if head != b"%PDF-":
+            return jsonify({"error": "file is not a valid PDF"}), 400
+
+
         fname = file.filename
 
         user_dir = app.config["STORAGE_DIR"] / "files" / g.user["login"]
