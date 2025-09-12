@@ -1,6 +1,7 @@
 import os
 import io
 import hashlib
+import secrets
 import datetime as dt
 from pathlib import Path
 from functools import wraps
@@ -629,7 +630,7 @@ def create_app():
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
         # link token = sha1(watermarked_file_name)
-        link_token = hashlib.sha1(candidate.encode("utf-8")).hexdigest()
+        link_token = secrets.token_urlsafe(24)
 
         try:
             with get_engine().begin() as conn:
