@@ -629,7 +629,7 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
-        # link token = sha1(watermarked_file_name)
+        # link token = random hash
         link_token = secrets.token_urlsafe(24)
 
         try:
