@@ -17,7 +17,7 @@ Note that you should probably fork the repo and clone your own repo.
 ### Run python unit tests
 
 ```bash
-cd tatou/server
+cd group03/server
 
 # Create a python virtual environement
 python3 -m venv .venv
