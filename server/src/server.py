@@ -1,6 +1,7 @@
 import os
 import io
 import hashlib
+import secrets
 import datetime as dt
 from pathlib import Path
 from functools import wraps
@@ -166,8 +167,21 @@ def create_app():
         if "file" not in request.files:
             return jsonify({"error": "file is required (multipart/form-data)"}), 400
         file = request.files["file"]
-        if not file or file.filename == "":
+
+# --- PDF check ---      
+        if not file or file.filename == "": 
             return jsonify({"error": "empty filename"}), 400
+        if not file.filename.lower().endswith(".pdf"):
+            return jsonify({"error": "only PDF files are allowed (wrong extension)"}), 400
+        if file.mimetype != "application/pdf":
+            return jsonify({"error": "only PDF files are allowed (wrong mimetype)"}), 400
+
+    # Read a few bytes to verify the PDF signature
+        head = file.read(5)
+        file.seek(0) # Seek back so the entire file can be saved later
+        if head != b"%PDF-":
+            return jsonify({"error": "file is not a valid PDF"}), 400
+
 
         fname = file.filename
 
@@ -444,6 +458,7 @@ def create_app():
     # DELETE /api/delete-document  (and variants)
     @app.route("/api/delete-document", methods=["DELETE", "POST"])  # POST supported for convenience
     @app.route("/api/delete-document/<document_id>", methods=["DELETE"])
+    @require_auth
     def delete_document(document_id: int | None = None):
         # accept id from path, query (?id= / ?documentid=), or JSON body on POST
         if not document_id:
@@ -542,18 +557,19 @@ def create_app():
         if not method or not intended_for or not isinstance(secret, str) or not isinstance(key, str):
             return jsonify({"error": "method, intended_for, secret, and key are required"}), 400
 
-        # lookup the document; enforce ownership
+        # lookup the document; enforced ownership
         try:
             with get_engine().connect() as conn:
                 row = conn.execute(
                     text("""
                         SELECT id, name, path
                         FROM Documents
-                        WHERE id = :id
+                        WHERE id = :id AND ownerid = :uid
                         LIMIT 1
                     """),
-                    {"id": doc_id},
+                    {"id": doc_id, "uid": int(g.user["id"])}
                 ).first()
+
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
@@ -615,8 +631,8 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
-        # link token = sha1(watermarked_file_name)
-        link_token = hashlib.sha1(candidate.encode("utf-8")).hexdigest()
+        # link token = random hash
+        link_token = secrets.token_urlsafe(24)
 
         try:
             with get_engine().begin() as conn:
@@ -764,17 +780,18 @@ def create_app():
         if not method or not isinstance(key, str):
             return jsonify({"error": "method, and key are required"}), 400
 
-        # lookup the document; FIXME enforce ownership
+        # lookup the document; enforced ownership
         try:
             with get_engine().connect() as conn:
                 row = conn.execute(
                     text("""
                         SELECT id, name, path
                         FROM Documents
-                        WHERE id = :id
+                        WHERE id = :id AND ownerid = :uid
                     """),
-                    {"id": doc_id},
+                    {"id": doc_id, "uid": int(g.user["id"])}
                 ).first()
+
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
