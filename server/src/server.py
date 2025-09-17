@@ -11,6 +11,10 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+#added this to include rate limiting, to prevent brute-force attacks
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
@@ -27,6 +31,36 @@ from watermarking_method import WatermarkingMethod
 
 def create_app():
     app = Flask(__name__)
+
+#added this to prevent eg. brute-force - baseline for the whole app
+    limiter = Limiter(
+        key_func=get_remote_address,  # per-IP as standard
+        app=app,
+        default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
+    )
+
+# key function: per log-in, if not logged-in its per IP
+    def user_or_ip():
+        try:
+            return f"user:{int(g.user['id'])}"
+        except Exception:
+            return f"ip:{get_remote_address()}"
+
+#key for each account at log-in (fallback to IP)
+    def login_key():
+        body = request.get_json(silent=True) or {}
+        login = (body.get("login") or body.get("email") or "").strip().lower()
+        return f"acct:{login}" if login else f"ip:{get_remote_address()}"
+
+
+ #shared limit for upload (per user/IP)
+    upload_limit = limiter.shared_limit(
+        "2 per minute; 20 per hour",
+        scope="upload",
+        key_func=user_or_ip
+    )
+
+
 
     # --- Config ---
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
@@ -97,6 +131,7 @@ def create_app():
         return app.send_static_file("index.html")
     
     @app.get("/healthz")
+    @limiter.exempt #added this, no restrictions 
     def healthz():
         try:
             with get_engine().connect() as conn:
@@ -138,6 +173,8 @@ def create_app():
 
     # POST /api/login {login, password}
     @app.post("/api/login")
+    @limiter.limit("3 per minute; 10 per hour", key_func=login_key)   # added per konto
+    @limiter.limit("20 per minute", key_func=get_remote_address)      # added per IP
     def login():
         payload = request.get_json(silent=True) or {}
         email = (payload.get("email") or "").strip()
@@ -163,6 +200,7 @@ def create_app():
     # POST /api/upload-document  (multipart/form-data)
     @app.post("/api/upload-document")
     @require_auth
+    @upload_limit #added this for brute-force 
     def upload_document():
         if "file" not in request.files:
             return jsonify({"error": "file is required (multipart/form-data)"}), 400
@@ -475,8 +513,10 @@ def create_app():
         # Fetch the document (enforce ownership)
         try:
             with get_engine().connect() as conn:
-                query = "SELECT * FROM Documents WHERE id = " + doc_id
-                row = conn.execute(text(query)).first()
+                row = conn.execute(
+                    text("SELECT * FROM Documents WHERE id = :id AND ownerid = :uid"), 
+                    {"id": doc_id, "uid": int(g.user["id"])}
+                ).first()
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
@@ -826,6 +866,11 @@ def create_app():
             "method": method,
             "position": position
         }), 201
+    
+    #added this for the brute-force thing
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify(error="rate_limited", detail=str(e.description)), 429
 
     return app
     
@@ -836,4 +881,3 @@ app = create_app()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
