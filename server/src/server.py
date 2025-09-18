@@ -311,12 +311,14 @@ def create_app():
                 document_id = int(document_id)
             except (TypeError, ValueError):
                 return jsonify({"error": "document id required"}), 400
-        
+       
+        #took away secret /S
+
         try:
             with get_engine().connect() as conn:
                 rows = conn.execute(
                     text("""
-                        SELECT v.id, v.documentid, v.link, v.intended_for, v.secret, v.method
+                        SELECT v.id, v.documentid, v.link, v.intended_for, v.method
                         FROM Users u
                         JOIN Documents d ON d.ownerid = u.id
                         JOIN Versions v ON d.id = v.documentid
@@ -332,8 +334,8 @@ def create_app():
             "documentid": int(r.documentid),
             "link": r.link,
             "intended_for": r.intended_for,
-            "secret": r.secret,
             "method": r.method,
+            #took away secret / S
         } for r in rows]
         return jsonify({"versions": versions}), 200
     

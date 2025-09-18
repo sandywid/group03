@@ -10,7 +10,8 @@ dependencies = [
 	"PyMySQL==1.1.2",
 	"SQLAlchemy==2.0.43",
 	"dill==0.4.0",
-	"Flask-Limiter>=3.0.0" # added this one for the brute-force thing
+	"Flask-Limiter>=3.0.0", # added this one for the brute-force thing/S
+	"cryptography>=41.0.0" #added this for my WM method /S
 ]
 
 [project.optional-dependencies]

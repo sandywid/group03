@@ -43,6 +43,7 @@ from watermarking_method import (
 )
 from add_after_eof import AddAfterEOF
 # Took away: "from unsafe_bash_bridge_append_eof import UnsafeBashBridgeAppendEOF"
+from advanced_steganographic_watermark import AdvancedSteganographicWatermark #added/S
 
 # --------------------
 # Method registry
@@ -50,6 +51,7 @@ from add_after_eof import AddAfterEOF
 
 METHODS: Dict[str, WatermarkingMethod] = {
     AddAfterEOF.name: AddAfterEOF(),
+    AdvancedSteganographicWatermark.name: AdvancedSteganographicWatermark(), #added /S
 }
 
 #changed this one too
