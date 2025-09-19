@@ -812,27 +812,48 @@ def create_app():
         method   = payload.get("method")
         key      = payload.get("key")
         position = payload.get("position") or None
-        link     = payload.get("link")  # NEW: stöd för att läsa en specifik version via link
+        link     = payload.get("link") # NEW: stöd för att läsa en specifik version via link/S
+        version_id = payload.get("version_id") or payload.get("versionId")  #so they only need a key/s
 
     # CHANGED: samma logik som originalet men fixad feltext
-        if not method or not isinstance(key, str):
-            return jsonify({"error": "method and key are required"}), 400
+        if not isinstance(key, str):
+            return jsonify({"error": "key is required"}), 400 #la in /s
 
         storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED: låg längre ner i originalet
 
+#I changed this so they only need the key /s
         try:
             with get_engine().connect() as conn:
                 file_row = None
 
-                if link:  # NEW: om "link" finns i payload → slå upp i Versions i stället för Documents
+                if version_id:  
+                    vrow = conn.execute(
+                        text("""
+                            SELECT v.path, v.method, v.link
+                            FROM Versions v
+                            JOIN Documents d ON d.id = v.documentid
+                            WHERE v.id = :vid
+                            AND d.id = :did
+                            AND d.ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"vid": int(version_id), "did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not vrow:
+                        return jsonify({"error": "version not found"}), 404
+                    file_path = Path(vrow.path)
+                    method = vrow.method or method   # ← här fyller vi i method
+                    link   = vrow.link or link       # ← och link
+
+                elif link:  # 🔽 Din gamla kod flyttas ner hit
                     file_row = conn.execute(
                         text("""
                             SELECT v.path
                             FROM Versions v
                             JOIN Documents d ON d.id = v.documentid
                             WHERE v.link = :link
-                                AND d.id = :did
-                                AND d.ownerid = :uid
+                            AND d.id = :did
+                            AND d.ownerid = :uid
                             LIMIT 1
                         """),
                         {"link": str(link), "did": doc_id, "uid": int(g.user["id"])},
@@ -840,8 +861,8 @@ def create_app():
                     if not file_row:
                         return jsonify({"error": "version not found"}), 404
                     file_path = Path(file_row.path)
-                else:
-                     # Fallback: originalfilen (samma som innan)
+
+                else:  # 🔽 Fallback: originalfilen
                     doc_row = conn.execute(
                         text("""
                             SELECT path
