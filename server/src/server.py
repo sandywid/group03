@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-#added this to include rate limiting, to prevent brute-force attacks
+#added this to include rate limiting, to prevent brute-force attacks /S
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -32,7 +32,7 @@ from watermarking_method import WatermarkingMethod
 def create_app():
     app = Flask(__name__)
 
-#added this to prevent eg. brute-force - baseline for the whole app
+#added this to prevent eg. brute-force - baseline for the whole app/S
     limiter = Limiter(
         key_func=get_remote_address,  # per-IP as standard
         app=app,
@@ -790,13 +790,13 @@ def create_app():
             methods.append({"name": m, "description": WMUtils.get_method(m).get_usage()})
             
         return jsonify({"methods": methods, "count": len(methods)}), 200
-        
+            
     # POST /api/read-watermark
     @app.post("/api/read-watermark")
     @app.post("/api/read-watermark/<int:document_id>")
     @require_auth
     def read_watermark(document_id: int | None = None):
-        # accept id from path, query (?id= / ?documentid=), or JSON body on POST
+    # Hämta dokument-ID från path, query (?id=/ ?documentid=) eller body
         if not document_id:
             document_id = (
                 request.args.get("id")
@@ -804,70 +804,100 @@ def create_app():
                 or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
             )
         try:
-            doc_id = document_id
+            doc_id = int(document_id)
         except (TypeError, ValueError):
             return jsonify({"error": "document id required"}), 400
-            
+
         payload = request.get_json(silent=True) or {}
-        # allow a couple of aliases for convenience
-        method = payload.get("method")
+        method   = payload.get("method")
+        key      = payload.get("key")
         position = payload.get("position") or None
-        key = payload.get("key")
+        link     = payload.get("link")  # NEW: stöd för att läsa en specifik version via link
 
-        # validate input
-        try:
-            doc_id = int(doc_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "document_id (int) is required"}), 400
+    # CHANGED: samma logik som originalet men fixad feltext
         if not method or not isinstance(key, str):
-            return jsonify({"error": "method, and key are required"}), 400
+            return jsonify({"error": "method and key are required"}), 400
 
-        # lookup the document; enforced ownership
+        storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED: låg längre ner i originalet
+
         try:
             with get_engine().connect() as conn:
-                row = conn.execute(
-                    text("""
-                        SELECT id, name, path
-                        FROM Documents
-                        WHERE id = :id AND ownerid = :uid
-                    """),
-                    {"id": doc_id, "uid": int(g.user["id"])}
-                ).first()
+                file_row = None
+
+                if link:  # NEW: om "link" finns i payload → slå upp i Versions i stället för Documents
+                    file_row = conn.execute(
+                        text("""
+                            SELECT v.path
+                            FROM Versions v
+                            JOIN Documents d ON d.id = v.documentid
+                            WHERE v.link = :link
+                                AND d.id = :did
+                                AND d.ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"link": str(link), "did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not file_row:
+                        return jsonify({"error": "version not found"}), 404
+                    file_path = Path(file_row.path)
+                else:
+                     # Fallback: originalfilen (samma som innan)
+                    doc_row = conn.execute(
+                        text("""
+                            SELECT path
+                            FROM Documents
+                            WHERE id = :did AND ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not doc_row:
+                        return jsonify({"error": "document not found"}), 404
+                    file_path = Path(doc_row.path)
 
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
-        if not row:
-            return jsonify({"error": "document not found"}), 404
-
-        # resolve path safely under STORAGE_DIR
-        storage_root = Path(app.config["STORAGE_DIR"]).resolve()
-        file_path = Path(row.path)
+    # Path-resolution och filkontroller (oförändrat)
         if not file_path.is_absolute():
-            file_path = storage_root / file_path
-        file_path = file_path.resolve()
+            file_path = (storage_root / file_path).resolve()
+        else:
+            file_path = file_path.resolve()
         try:
             file_path.relative_to(storage_root)
         except ValueError:
             return jsonify({"error": "document path invalid"}), 500
         if not file_path.exists():
             return jsonify({"error": "file missing on disk"}), 410
-        
-        secret = None
+
         try:
-            secret = WMUtils.read_watermark(
-                method=method,
-                pdf=str(file_path),
-                key=key
-            )
+    # Prova med position om det råkar stödjas
+            try:
+                result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key, position=position)
+            except TypeError:
+        # Metoden accepterar inte 'position' → kör utan
+                result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key)
+
+            if isinstance(result, tuple) and len(result) == 2:
+                ok, secret = result
+                if not ok:
+                    return jsonify({"found": False}), 404
+            else:
+                secret = result
+                if secret in (None, "", False):
+                    return jsonify({"found": False}), 404
+
+            return jsonify({
+                "found": True,        # NEW: tydlig indikator på att watermark hittades
+                "documentid": doc_id,
+                "method": method,
+                "position": position,
+                "secret": secret
+            }), 200  # CHANGED: returnerar 200 OK istället för 201 Created
+
         except Exception as e:
             return jsonify({"error": f"Error when attempting to read watermark: {e}"}), 400
-        return jsonify({
-            "documentid": doc_id,
-            "secret": secret,
-            "method": method,
-            "position": position
-        }), 201
+
     
     #added this for the brute-force thing
     @app.errorhandler(429)
