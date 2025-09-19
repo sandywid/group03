@@ -2,6 +2,8 @@ import os
 import io
 import hashlib
 import secrets
+import re
+from pathlib import Path
 import datetime as dt
 from pathlib import Path
 from functools import wraps
@@ -227,7 +229,11 @@ def create_app():
         user_dir.mkdir(parents=True, exist_ok=True)
 
         ts = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
-        final_name = request.form.get("name") or fname
+        final_name = (request.form.get("name") or Path(fname).stem).strip()
+        if not re.fullmatch(r"[A-Za-zÅÄÖåäö]+", final_name):
+            return jsonify({
+                "error": "The name can only contain letters (A–Z, a–z, ÅÄÖ, åäö) – no numbers or special characters."
+            }), 400
         stored_name = f"{ts}__{fname}"
         stored_path = user_dir / stored_name
         file.save(stored_path)
