@@ -842,10 +842,10 @@ def create_app():
                     if not vrow:
                         return jsonify({"error": "version not found"}), 404
                     file_path = Path(vrow.path)
-                    method = vrow.method or method   # ← här fyller vi i method
-                    link   = vrow.link or link       # ← och link
+                    method = vrow.method or method   
+                    link   = vrow.link or link       
 
-                elif link:  # 🔽 Din gamla kod flyttas ner hit
+                elif link:  # old code here /Sandra
                     file_row = conn.execute(
                         text("""
                             SELECT v.path
@@ -862,7 +862,7 @@ def create_app():
                         return jsonify({"error": "version not found"}), 404
                     file_path = Path(file_row.path)
 
-                else:  # 🔽 Fallback: originalfilen
+                else:  # Fallback: originalfile /Sandra
                     doc_row = conn.execute(
                         text("""
                             SELECT path
@@ -879,7 +879,7 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
-    # Path-resolution och filkontroller (oförändrat)
+    # Path resolution and file checks (unchanged) /Sandra
         if not file_path.is_absolute():
             file_path = (storage_root / file_path).resolve()
         else:
@@ -892,11 +892,11 @@ def create_app():
             return jsonify({"error": "file missing on disk"}), 410
 
         try:
-    # Prova med position om det råkar stödjas
+    # Try with position if supported /Sandra
             try:
                 result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key, position=position)
             except TypeError:
-        # Metoden accepterar inte 'position' → kör utan
+        # The method does not accept 'position' —> proceeding without it/Sandra
                 result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key)
 
             if isinstance(result, tuple) and len(result) == 2:
@@ -909,7 +909,6 @@ def create_app():
                     return jsonify({"found": False}), 404
 
             return jsonify({
-                "found": True,        # NEW: more clear indicator on that the watermark was found/ Sandra
                 "documentid": doc_id,
                 "method": method,
                 "position": position,
