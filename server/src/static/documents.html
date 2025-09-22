@@ -10,13 +10,13 @@
     <style>
     /* ==== Tabell ==== */
     .table tbody tr {
-      border-bottom: 1px solid #e5e7eb; /* ljus grå linje mellan rader */
+      border-bottom: 1px solid #e5e7eb; 
     }
     .table tbody tr:last-child {
-      border-bottom: none; /* ta bort sista linjen */
+      border-bottom: none; 
     }
     .table td {
-      padding: 12px 8px;  /* mer spacing i cellerna */
+      padding: 12px 8px;  
       vertical-align: middle;
     }
 
@@ -192,7 +192,7 @@
       modalContent.innerHTML = html;
       modal.hidden = false;
     }
-
+// changed the text on the buttoms a little / Sandra
     async function loadDocuments(){
       docsBody.innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
       try {
@@ -333,7 +333,7 @@
       });
     }
 
-    // Read watermark (per dokument) – kvar om du vill starta utan versionslistan
+    // Read watermark (for each document) /Sandra 
     async function openReadWatermarkForm(documentId){
       const methods = await loadMethods();
       const options = methods.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)} — ${escapeHtml(m.description||'')}</option>`).join('');
@@ -365,7 +365,7 @@
       });
     }
 
-    // Read watermark (per version) – NY
+    // Read watermark (per version) – New /Sandra
     async function openReadWatermarkFormForVersion(docId, versionId){
       openModal('Read watermark for #' + docId, `
         <form id="readWmForm" class="form-vertical">
@@ -414,7 +414,7 @@
         return;
       }
 
-      // Read watermark far a specifik version
+      // Read watermark for a specifik version
       const readBtn = e.target.closest('button[data-read-version]');
       if (readBtn) {
         const versionId = readBtn.getAttribute('data-vid');
