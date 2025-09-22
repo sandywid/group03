@@ -220,7 +220,7 @@ _None_
  ## list-all-versions
  
 **Path**
-`GET /api/list-versions`
+`GET /api/list-all-versions`
 
 **Description**  
 This endpoint lists all versions of all PDF documents for the authenticated user stored in the system.
