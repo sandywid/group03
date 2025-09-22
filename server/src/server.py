@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-#added this to include rate limiting, to prevent brute-force attacks
+#added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -34,28 +34,28 @@ from watermarking_method import WatermarkingMethod
 def create_app():
     app = Flask(__name__)
 
-#added this to prevent eg. brute-force - baseline for the whole app
+#added this to prevent eg. brute-force - baseline for the whole app/Sandra
     limiter = Limiter(
         key_func=get_remote_address,  # per-IP as standard
         app=app,
         default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
     )
 
-# key function: per log-in, if not logged-in its per IP
+# key function: per log-in, if not logged-in its per IP/Sandra
     def user_or_ip():
         try:
             return f"user:{int(g.user['id'])}"
         except Exception:
             return f"ip:{get_remote_address()}"
 
-#key for each account at log-in (fallback to IP)
+#key for each account at log-in (fallback to IP)/Sandra
     def login_key():
         body = request.get_json(silent=True) or {}
         login = (body.get("login") or body.get("email") or "").strip().lower()
         return f"acct:{login}" if login else f"ip:{get_remote_address()}"
 
 
- #shared limit for upload (per user/IP)
+ #shared limit for upload (per user/IP)/Sandra
     upload_limit = limiter.shared_limit(
         "2 per minute; 20 per hour",
         scope="upload",
@@ -317,12 +317,14 @@ def create_app():
                 document_id = int(document_id)
             except (TypeError, ValueError):
                 return jsonify({"error": "document id required"}), 400
-        
+       
+        #took away secret /S
+
         try:
             with get_engine().connect() as conn:
                 rows = conn.execute(
                     text("""
-                        SELECT v.id, v.documentid, v.link, v.intended_for, v.secret, v.method
+                        SELECT v.id, v.documentid, v.link, v.intended_for, v.method
                         FROM Users u
                         JOIN Documents d ON d.ownerid = u.id
                         JOIN Versions v ON d.id = v.documentid
@@ -338,8 +340,8 @@ def create_app():
             "documentid": int(r.documentid),
             "link": r.link,
             "intended_for": r.intended_for,
-            "secret": r.secret,
             "method": r.method,
+            #took away secret / S
         } for r in rows]
         return jsonify({"versions": versions}), 200
     
@@ -603,7 +605,7 @@ def create_app():
         if not method or not intended_for or not isinstance(secret, str) or not isinstance(key, str):
             return jsonify({"error": "method, intended_for, secret, and key are required"}), 400
 
-        # lookup the document; enforced ownership
+        # lookup the document; enforced ownership /Sandra
         try:
             with get_engine().connect() as conn:
                 row = conn.execute(
@@ -677,7 +679,7 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
-        # link token = random hash
+        # link token = random hash instead of SHA1 / Sandra 
         link_token = secrets.token_urlsafe(24)
 
         try:
@@ -772,7 +774,7 @@ def create_app():
         if not is_ok:
             return jsonify({"error": "plugin does not implement WatermarkingMethod API (add_watermark/read_secret)"}), 400
             
-        # Register the class (not an instance) so you can instantiate as needed later
+        # Register the class (not an instance) /Sandra
         WMUtils.METHODS[method_name] = cls()
         
         return jsonify({
@@ -794,13 +796,13 @@ def create_app():
             methods.append({"name": m, "description": WMUtils.get_method(m).get_usage()})
             
         return jsonify({"methods": methods, "count": len(methods)}), 200
-        
+            
     # POST /api/read-watermark
     @app.post("/api/read-watermark")
     @app.post("/api/read-watermark/<int:document_id>")
     @require_auth
     def read_watermark(document_id: int | None = None):
-        # accept id from path, query (?id= / ?documentid=), or JSON body on POST
+    # Get document-ID from path, query (?id=/ ?documentid=) or body /Sandra
         if not document_id:
             document_id = (
                 request.args.get("id")
@@ -808,72 +810,122 @@ def create_app():
                 or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
             )
         try:
-            doc_id = document_id
+            doc_id = int(document_id)
         except (TypeError, ValueError):
             return jsonify({"error": "document id required"}), 400
-            
+
         payload = request.get_json(silent=True) or {}
-        # allow a couple of aliases for convenience
-        method = payload.get("method")
+        method   = payload.get("method")
+        key      = payload.get("key")
         position = payload.get("position") or None
-        key = payload.get("key")
+        link     = payload.get("link") # NEW: Support to read through the link/Sandra
+        version_id = payload.get("version_id") or payload.get("versionId")  #so they only need a key/Sandra
 
-        # validate input
-        try:
-            doc_id = int(doc_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "document_id (int) is required"}), 400
-        if not method or not isinstance(key, str):
-            return jsonify({"error": "method, and key are required"}), 400
+    # CHANGED /Sandra
+        if not isinstance(key, str):
+            return jsonify({"error": "key is required"}), 400 #Added/Sandnra
 
-        # lookup the document; enforced ownership
+        storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED/Sandrsa
+
+#I changed this so they only need the key and not method /Sandra
         try:
             with get_engine().connect() as conn:
-                row = conn.execute(
-                    text("""
-                        SELECT id, name, path
-                        FROM Documents
-                        WHERE id = :id AND ownerid = :uid
-                    """),
-                    {"id": doc_id, "uid": int(g.user["id"])}
-                ).first()
+                file_row = None
+
+                if version_id:  
+                    vrow = conn.execute(
+                        text("""
+                            SELECT v.path, v.method, v.link
+                            FROM Versions v
+                            JOIN Documents d ON d.id = v.documentid
+                            WHERE v.id = :vid
+                            AND d.id = :did
+                            AND d.ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"vid": int(version_id), "did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not vrow:
+                        return jsonify({"error": "version not found"}), 404
+                    file_path = Path(vrow.path)
+                    method = vrow.method or method   
+                    link   = vrow.link or link       
+
+                elif link:  # old code here /Sandra
+                    file_row = conn.execute(
+                        text("""
+                            SELECT v.path
+                            FROM Versions v
+                            JOIN Documents d ON d.id = v.documentid
+                            WHERE v.link = :link
+                            AND d.id = :did
+                            AND d.ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"link": str(link), "did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not file_row:
+                        return jsonify({"error": "version not found"}), 404
+                    file_path = Path(file_row.path)
+
+                else:  # Fallback: originalfile /Sandra
+                    doc_row = conn.execute(
+                        text("""
+                            SELECT path
+                            FROM Documents
+                            WHERE id = :did AND ownerid = :uid
+                            LIMIT 1
+                        """),
+                        {"did": doc_id, "uid": int(g.user["id"])},
+                    ).first()
+                    if not doc_row:
+                        return jsonify({"error": "document not found"}), 404
+                    file_path = Path(doc_row.path)
 
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
-        if not row:
-            return jsonify({"error": "document not found"}), 404
-
-        # resolve path safely under STORAGE_DIR
-        storage_root = Path(app.config["STORAGE_DIR"]).resolve()
-        file_path = Path(row.path)
+    # Path resolution and file checks (unchanged) /Sandra
         if not file_path.is_absolute():
-            file_path = storage_root / file_path
-        file_path = file_path.resolve()
+            file_path = (storage_root / file_path).resolve()
+        else:
+            file_path = file_path.resolve()
         try:
             file_path.relative_to(storage_root)
         except ValueError:
             return jsonify({"error": "document path invalid"}), 500
         if not file_path.exists():
             return jsonify({"error": "file missing on disk"}), 410
-        
-        secret = None
+
         try:
-            secret = WMUtils.read_watermark(
-                method=method,
-                pdf=str(file_path),
-                key=key
-            )
+    # Try with position if supported /Sandra
+            try:
+                result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key, position=position)
+            except TypeError:
+        # The method does not accept 'position' —> proceeding without it/Sandra
+                result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key)
+
+            if isinstance(result, tuple) and len(result) == 2:
+                ok, secret = result
+                if not ok:
+                    return jsonify({"found": False}), 404
+            else:
+                secret = result
+                if secret in (None, "", False):
+                    return jsonify({"found": False}), 404
+
+            return jsonify({
+                "documentid": doc_id,
+                "method": method,
+                "position": position,
+                "secret": secret
+            }), 200  # CHANGED: retur 200 OK instead of 201 Created /Sandra
+
         except Exception as e:
             return jsonify({"error": f"Error when attempting to read watermark: {e}"}), 400
-        return jsonify({
-            "documentid": doc_id,
-            "secret": secret,
-            "method": method,
-            "position": position
-        }), 201
+
     
-    #added this for the brute-force thing
+    #added this for the brute-force thing aka. flask_limiter /Sandra
     @app.errorhandler(429)
     def ratelimit_handler(e):
         return jsonify(error="rate_limited", detail=str(e.description)), 429

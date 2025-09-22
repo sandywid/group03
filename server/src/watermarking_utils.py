@@ -42,7 +42,8 @@ from watermarking_method import (
     load_pdf_bytes,
 )
 from add_after_eof import AddAfterEOF
-# Took away: "from unsafe_bash_bridge_append_eof import UnsafeBashBridgeAppendEOF"
+# Took away: "from unsafe_bash_bridge_append_eof import UnsafeBashBridgeAppendEOF"/Sandra
+from PDFishAndChipsStamp import PDFishAndChipsStamp #added my watermarkingmethod/Sandra
 
 # --------------------
 # Method registry
@@ -50,9 +51,10 @@ from add_after_eof import AddAfterEOF
 
 METHODS: Dict[str, WatermarkingMethod] = {
     AddAfterEOF.name: AddAfterEOF(),
+    PDFishAndChipsStamp.name: PDFishAndChipsStamp(), #added my watermarkingmetod /Sandra 
 }
 
-#changed this one too
+#changed/took away this one too/Sandra
 #METHODS: Dict[str, WatermarkingMethod] = {
    #AddAfterEOF.name: AddAfterEOF(),
    #UnsafeBashBridgeAppendEOF.name: UnsafeBashBridgeAppendEOF()
