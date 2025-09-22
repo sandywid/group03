@@ -17,6 +17,7 @@ services:
       - DB_NAME=tatou
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY} #Added this here too/Sandra
     depends_on:
       db:
         condition: service_healthy
