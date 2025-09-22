@@ -5,7 +5,78 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>My Documents • Tatou</title>
   <link rel="stylesheet" href="style.css">
-</head>
+  <style>
+    /* Snyggare actions-layout */
+    <style>
+    /* ==== Tabell ==== */
+    .table tbody tr {
+      border-bottom: 1px solid #e5e7eb; /* ljus grå linje mellan rader */
+    }
+    .table tbody tr:last-child {
+      border-bottom: none; /* ta bort sista linjen */
+    }
+    .table td {
+      padding: 12px 8px;  /* mer spacing i cellerna */
+      vertical-align: middle;
+    }
+
+    /* ==== Actions-layout ==== */
+    .row-actions--grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 8px 12px;
+      align-items: center;
+    }
+    .row-actions__full {
+      grid-column: 1 / -1;
+    }
+
+    /* ==== Knappar ==== */
+    .btn {
+      border-radius: 6px;
+      padding: 4px 8px;      /* mindre padding → kompakta knappar */
+      font-size: 13px;       /* mindre text */
+      font-weight: 500;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      transition: background 0.2s, border 0.2s;
+    }
+    .btn:hover {
+      background: #f3f4f6;
+      border-color: #d1d5db;
+    }
+
+    /* Primärknapp (om du använder Upload PDF-stilen t.ex.) */
+    .btn--primary {
+      background: #4f46e5;
+      border-color: #4f46e5;
+      color: #fff;
+    }
+    .btn--primary:hover {
+      background: #4338ca;
+      border-color: #4338ca;
+    }
+
+    /* Ghost-knapp (diskret) */
+    .btn--ghost {
+      background: #fff;
+      border-color: #e5e7eb;
+      color: #374151;
+      font-size: 13px;
+    }
+
+    /* Delete-knapp (danger) */
+    .btn--danger {
+      border: 1px solid #fca5a5;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .btn--danger:hover {
+      background: #fee2e2;
+      border-color: #f87171;
+    }
+  </style>
+  </head>
 <body>
   <header>
     <div class="container nav">
@@ -121,12 +192,11 @@
       modal.hidden = false;
     }
 
-    // Load documents
     async function loadDocuments(){
       docsBody.innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
       try {
         const resp = await apiFetch('/api/list-documents');
-        if (!resp.ok) throw new Error('HTTP '+resp.status);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
         const rows = (data.documents || []).map(doc => {
           const created = doc.creation ? new Date(doc.creation).toLocaleString() : '';
@@ -137,15 +207,19 @@
             <td>${humanSize(doc.size)}</td>
             <td class="mono" title="${doc.sha256}">${doc.sha256?.slice(0,10)}…</td>
             <td>
-              <div class="row-actions">
+              <div class="row-actions row-actions--grid">
                 <button class="btn" data-action="view" data-id="${doc.id}">View</button>
-                <button class="btn" data-action="versions" data-id="${doc.id}">Versions</button>
-                <button class="btn" data-action="watermark" data-id="${doc.id}">Watermark</button>
-                <button class="btn" data-action="readwm" data-id="${doc.id}">Read watermark</button>
-                <button class="btn" data-action="delete" data-id="${doc.id}">Delete</button>
+                <button class="btn" data-action="watermark" data-id="${doc.id}">Watermark documents</button>
+
+                <button class="btn btn--ghost row-actions__full"
+                        data-action="versions" data-id="${doc.id}">
+                  See versions & read watermarks
+                </button>
+
+                <button class="btn btn--danger" data-action="delete" data-id="${doc.id}">Delete</button>
               </div>
             </td>
-          </tr>`
+          </tr>`;
         }).join('');
         docsBody.innerHTML = rows || '<tr><td colspan="6" class="muted">No documents yet. Upload one above.</td></tr>';
       } catch (e) {
@@ -279,8 +353,8 @@
         const fd = new FormData(e.currentTarget);
         const payload = Object.fromEntries(fd.entries());
         try {
-          // OBS: Denna variant skickar method/key – backend kan med fallback välja senaste versionen per metod
-          const r = await apiFetchJSON(`/api/read-watermark/${documentId}`, 'POST', payload);
+
+          // This variant sends method/key – the backend can, with fallback, choose the latest version per method          const r = await apiFetchJSON(`/api/read-watermark/${documentId}`, 'POST', payload);
           const data = await r.json().catch(()=> ({}));
           if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
           openModal('Watermark data', `<pre class="pre">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`);
@@ -322,7 +396,7 @@
 
     // Modal click delegation (Open / Read watermark)
     modal.addEventListener('click', async (e) => {
-      // Öppna vattenmärkt version (PDF)
+      // Open watermark version (PDF)
       const openBtn = e.target.closest('button[data-open-version]');
       if (openBtn) {
         const link = openBtn.getAttribute('data-open-version');
@@ -339,7 +413,7 @@
         return;
       }
 
-      // Läs watermark för en specifik version
+      // Read watermark far a specifik version
       const readBtn = e.target.closest('button[data-read-version]');
       if (readBtn) {
         const versionId = readBtn.getAttribute('data-vid');

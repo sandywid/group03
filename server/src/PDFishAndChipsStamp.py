@@ -1,17 +1,13 @@
-#  PDFishAndChipsStamp
+#  PDFishAndChipsStamp.py
 #
-# advanced_steganographic_watermark.py
-#"""
-#Basic-stream steganographic watermarking for PDFs.
+# - Encrypts 'secret' with key (AES-GCM).
+# - Builds bitstream: MAGIC (7B) + 32-bit length + payload (JSON bytes).
+# - Embedding: writes each bit in the LSB parity of the last digit in each number token.
+# - Extraction: reads back in the same order.
+#
+# This file is self-contained and attempts to reuse the project's
+# watermarking_method for exceptions/base class.
 
-#- Krypterar 'secret' med key (AES-GCM).
-#- Bygger bitström: MAGIC (7B) + 32-bit längd + payload (JSON-bytes).
-#- Inbäddning: skriver varje bit i LSB-pariteten av sista siffran i varje tal-token.
-#- Utläsning: läser tillbaka i samma ordning.
-
-#Den här filen är självständig och försöker återanvända projektets
-#watermarking_method (om den finns) för exceptions/basklass.
-#"""
 
 from __future__ import annotations
 import os
@@ -39,37 +35,37 @@ except Exception:
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except Exception:
-    AESGCM = None  # höjs vid användning
+    AESGCM = None  # incremented when used
 
-class AdvancedSteganographicWatermark(WatermarkingMethodBase):
+class PDFishAndChipsStamp(WatermarkingMethodBase):
     
-    name = "advanced-steganographic"
+    name = "PDFishAndChipsStamp"
 
-    # --- Klasskonstanter för basic stream ---
+    # --- Class constants for basic stream ---
     _MAGIC = b"ADVWM1|"   # 7 bytes
     _LEN_BITS = 32        # 32-bit längdfält
     _HEADER_BITS = len(_MAGIC) * 8 + _LEN_BITS
 
-    # Håller kvar CHUNK_SIZE för kompatibilitet, används ej i stream-läget
+    # Keep CHUNK_SIZE for compatibility, not used in stream mode
     _CHUNK_SIZE = 4
 
     def __init__(self):
         super().__init__() if hasattr(super(), "__init__") else None
 
-    # ====== Basklassens abstrakta metoder (minimala implementationer) ======
+    # ====== Abstract methods of the base class (minimal implementations) ======
     @staticmethod
     def get_usage() -> str:
-        return "PDFishAndChipsStamp"
+        return "Please enter your secret and key"
  
 
     def is_watermark_applicable(self, pdf, **kwargs) -> bool:
         return True
 
 
-    # ====== Publika API ======
+    # ====== Public API ======
     def add_watermark(self, pdf, secret: str, key: str, position: Optional[str] = None) -> bytes:
         if not secret or not key:
-            raise ValueError("Både secret och key måste vara icke-tomma strängar")
+            raise ValueError("Both secret and key are required fields")
 
         pdf_bytes = self._load_pdf_bytes(pdf)
         payload = self._prepare_payload(secret, key)
@@ -77,19 +73,19 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
 
     def read_secret(self, pdf, key: str) -> str:
         if not key:
-            raise ValueError("Key måste vara en icke-tom sträng")
+            raise ValueError("Key is required")
 
         pdf_bytes = self._load_pdf_bytes(pdf)
         extracted = self._extract_stream(pdf_bytes)
         if not extracted:
-            raise SecretNotFoundError("Inget vattenmärke hittades")
+            raise SecretNotFoundError("No watermark found")
 
         try:
             return self._decrypt_payload(extracted, key)
         except InvalidKeyError:
             raise
         except Exception as e:
-            raise InvalidKeyError("Felaktig nyckel eller korrupt vattenmärke") from e
+            raise InvalidKeyError("Invalid key or corrupted watermark") from e
 
     # ====== Kryptering / payload ======
     def _derive_key(self, key_material: str) -> bytes:
@@ -97,7 +93,7 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
 
     def _prepare_payload(self, secret: str, key: str) -> bytes:
         if AESGCM is None:
-            raise ModuleNotFoundError("cryptography saknas. Installera med `pip install cryptography`.")
+            raise ModuleNotFoundError("cryptography is missing. Install with pip install cryptography.")
 
         k = self._derive_key(key)
         aes = AESGCM(k)
@@ -105,18 +101,18 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
         ct = aes.encrypt(iv, secret.encode("utf-8"), None)  # ciphertext||tag
         obj = {"data": base64.b64encode(ct).decode("ascii"),
                "iv":   base64.b64encode(iv).decode("ascii")}
-        # kompakt JSON
+        # kompact JSON
         return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
     def _decrypt_payload(self, payload_bytes: bytes, key: str) -> str:
         if AESGCM is None:
-            raise ModuleNotFoundError("cryptography saknas. Installera med `pip install cryptography`.")
+            raise ModuleNotFoundError("cryptography is missing. Install with pip install cryptography.")
         try:
             obj = json.loads(payload_bytes.decode("utf-8"))
             ct = base64.b64decode(obj["data"])
             iv = base64.b64decode(obj["iv"])
         except Exception as e:
-            raise InvalidKeyError("Korrupt eller ogiltigt vattenmärke") from e
+            raise InvalidKeyError("Corrupted or invalid watermark") from e
 
         try:
             k = self._derive_key(key)
@@ -124,7 +120,7 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
             pt = aes.decrypt(iv, ct, None)
             return pt.decode("utf-8")
         except Exception as e:
-            raise InvalidKeyError("Felaktig nyckel eller korrupt vattenmärke") from e
+            raise InvalidKeyError("Invalid key or corrupted watermark") from e
 
     # ====== PDF util ======
     def _load_pdf_bytes(self, pdf) -> bytes:
@@ -135,9 +131,9 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
         if isinstance(pdf, str):
             with open(pdf, "rb") as f:
                 return f.read()
-        raise ValueError("pdf måste vara bytes, file-like eller en sökväg (str)")
+        raise ValueError("pdf must be bytes")
 
-    # ====== Token-iterator & paritet ======
+    # ====== Token iterator & parity ======
     def _iter_numbers(self, data: bytes) -> Iterator[Tuple[re.Match, int, int]]:
         num_pat = rb'[-+]?\d+(?:\.\d+)?'
         for m in re.finditer(num_pat, data):
@@ -171,7 +167,7 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
                     d = (d + 1) % 10
                 tail = tail[:-1] + str(d)
                 return (head + "." + tail).encode("ascii")
-        # heltal
+        # integer
         sign = ""
         body = s
         if body and body[0] in "+-":
@@ -211,9 +207,9 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
     def _extract_stream(self, pdf_bytes: bytes) -> bytes:
         numbers = list(self._iter_numbers(pdf_bytes))
         if not numbers:
-            raise SecretNotFoundError("Inget vattenmärke hittades (inga tal att läsa).")
+            raise SecretNotFoundError("No watermark found.")
 
-        # Läs header-bitar
+        # Read header-bits
         bits = []
         i = 0
         while len(bits) < self._HEADER_BITS and i < len(numbers):
@@ -223,18 +219,18 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
                 bits.append(str(b))
             i += 1
         if len(bits) < self._HEADER_BITS:
-            raise SecretNotFoundError("Ofullständig header/ingen magic header.")
+            raise SecretNotFoundError("Incomplete header/no magic header.")
 
-        # Tolka MAGIC + längd
+        # Interpret MAGIC + length
         header_bytes = bytearray()
         for j in range(0, len(bits), 8):
             header_bytes.append(int("".join(bits[j:j+8]), 2))
         magic = bytes(header_bytes[:len(self._MAGIC)])
         if magic != self._MAGIC:
-            raise SecretNotFoundError("Fel eller saknad magic header.")
+            raise SecretNotFoundError("Incorrect or missing magic header.")
         length = struct.unpack(">I", bytes(header_bytes[len(self._MAGIC):len(self._MAGIC)+4]))[0]
 
-        # Läs payload-bitar
+        # REad payload-bits
         need = length * 8
         data_bits = []
         while len(data_bits) < need and i < len(numbers):
@@ -244,7 +240,7 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
                 data_bits.append(str(b))
             i += 1
         if len(data_bits) < need:
-            raise SecretNotFoundError("Ofullständig payload.")
+            raise SecretNotFoundError("Incorrect payload.")
 
         out = bytearray()
         for j in range(0, len(data_bits), 8):
@@ -252,4 +248,4 @@ class AdvancedSteganographicWatermark(WatermarkingMethodBase):
         return bytes(out)
 
 if __name__ == "__main__":
-    print("advanced_steganographic_watermark.py")
+    print("PDFishAndChipsStamp.py")

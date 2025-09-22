@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-#added this to include rate limiting, to prevent brute-force attacks /S
+#added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -32,28 +32,28 @@ from watermarking_method import WatermarkingMethod
 def create_app():
     app = Flask(__name__)
 
-#added this to prevent eg. brute-force - baseline for the whole app/S
+#added this to prevent eg. brute-force - baseline for the whole app/Sandra
     limiter = Limiter(
         key_func=get_remote_address,  # per-IP as standard
         app=app,
         default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
     )
 
-# key function: per log-in, if not logged-in its per IP
+# key function: per log-in, if not logged-in its per IP/Sandra
     def user_or_ip():
         try:
             return f"user:{int(g.user['id'])}"
         except Exception:
             return f"ip:{get_remote_address()}"
 
-#key for each account at log-in (fallback to IP)
+#key for each account at log-in (fallback to IP)/Sandra
     def login_key():
         body = request.get_json(silent=True) or {}
         login = (body.get("login") or body.get("email") or "").strip().lower()
         return f"acct:{login}" if login else f"ip:{get_remote_address()}"
 
 
- #shared limit for upload (per user/IP)
+ #shared limit for upload (per user/IP)/Sandra
     upload_limit = limiter.shared_limit(
         "2 per minute; 20 per hour",
         scope="upload",
@@ -599,7 +599,7 @@ def create_app():
         if not method or not intended_for or not isinstance(secret, str) or not isinstance(key, str):
             return jsonify({"error": "method, intended_for, secret, and key are required"}), 400
 
-        # lookup the document; enforced ownership
+        # lookup the document; enforced ownership /Sandra
         try:
             with get_engine().connect() as conn:
                 row = conn.execute(
@@ -673,7 +673,7 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"failed to write watermarked file: {e}"}), 500
 
-        # link token = random hash
+        # link token = random hash instead of SHA1 / Sandra 
         link_token = secrets.token_urlsafe(24)
 
         try:
@@ -768,7 +768,7 @@ def create_app():
         if not is_ok:
             return jsonify({"error": "plugin does not implement WatermarkingMethod API (add_watermark/read_secret)"}), 400
             
-        # Register the class (not an instance) so you can instantiate as needed later
+        # Register the class (not an instance) /Sandra
         WMUtils.METHODS[method_name] = cls()
         
         return jsonify({
@@ -796,7 +796,7 @@ def create_app():
     @app.post("/api/read-watermark/<int:document_id>")
     @require_auth
     def read_watermark(document_id: int | None = None):
-    # Hämta dokument-ID från path, query (?id=/ ?documentid=) eller body
+    # Get document-ID from path, query (?id=/ ?documentid=) or body /Sandra
         if not document_id:
             document_id = (
                 request.args.get("id")
@@ -812,16 +812,16 @@ def create_app():
         method   = payload.get("method")
         key      = payload.get("key")
         position = payload.get("position") or None
-        link     = payload.get("link") # NEW: stöd för att läsa en specifik version via link/S
-        version_id = payload.get("version_id") or payload.get("versionId")  #so they only need a key/s
+        link     = payload.get("link") # NEW: Support to read through the link/Sandra
+        version_id = payload.get("version_id") or payload.get("versionId")  #so they only need a key/Sandra
 
-    # CHANGED: samma logik som originalet men fixad feltext
+    # CHANGED /Sandra
         if not isinstance(key, str):
-            return jsonify({"error": "key is required"}), 400 #la in /s
+            return jsonify({"error": "key is required"}), 400 #Added/Sandnra
 
-        storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED: låg längre ner i originalet
+        storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED/Sandrsa
 
-#I changed this so they only need the key /s
+#I changed this so they only need the key and not method /Sandra
         try:
             with get_engine().connect() as conn:
                 file_row = None
@@ -842,10 +842,10 @@ def create_app():
                     if not vrow:
                         return jsonify({"error": "version not found"}), 404
                     file_path = Path(vrow.path)
-                    method = vrow.method or method   # ← här fyller vi i method
-                    link   = vrow.link or link       # ← och link
+                    method = vrow.method or method   
+                    link   = vrow.link or link       
 
-                elif link:  # 🔽 Din gamla kod flyttas ner hit
+                elif link:  # old code here /Sandra
                     file_row = conn.execute(
                         text("""
                             SELECT v.path
@@ -862,7 +862,7 @@ def create_app():
                         return jsonify({"error": "version not found"}), 404
                     file_path = Path(file_row.path)
 
-                else:  # 🔽 Fallback: originalfilen
+                else:  # Fallback: originalfile /Sandra
                     doc_row = conn.execute(
                         text("""
                             SELECT path
@@ -879,7 +879,7 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
-    # Path-resolution och filkontroller (oförändrat)
+    # Path resolution and file checks (unchanged) /Sandra
         if not file_path.is_absolute():
             file_path = (storage_root / file_path).resolve()
         else:
@@ -892,11 +892,11 @@ def create_app():
             return jsonify({"error": "file missing on disk"}), 410
 
         try:
-    # Prova med position om det råkar stödjas
+    # Try with position if supported /Sandra
             try:
                 result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key, position=position)
             except TypeError:
-        # Metoden accepterar inte 'position' → kör utan
+        # The method does not accept 'position' —> proceeding without it/Sandra
                 result = WMUtils.read_watermark(method=method, pdf=str(file_path), key=key)
 
             if isinstance(result, tuple) and len(result) == 2:
@@ -909,18 +909,17 @@ def create_app():
                     return jsonify({"found": False}), 404
 
             return jsonify({
-                "found": True,        # NEW: tydlig indikator på att watermark hittades
                 "documentid": doc_id,
                 "method": method,
                 "position": position,
                 "secret": secret
-            }), 200  # CHANGED: returnerar 200 OK istället för 201 Created
+            }), 200  # CHANGED: retur 200 OK instead of 201 Created /Sandra
 
         except Exception as e:
             return jsonify({"error": f"Error when attempting to read watermark: {e}"}), 400
 
     
-    #added this for the brute-force thing
+    #added this for the brute-force thing aka. flask_limiter /Sandra
     @app.errorhandler(429)
     def ratelimit_handler(e):
         return jsonify(error="rate_limited", detail=str(e.description)), 429
