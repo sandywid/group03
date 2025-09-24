@@ -1,16 +1,21 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "Tatou-Server"
 version = "0.0.1"
 description = "PDF Watermarking platform"
 requires-python = ">=3.11"
 dependencies = [
-	"PyMuPDF>=1.21.1",
-	"Flask==3.0.3",
-	"gunicorn==21.2.0",
-	"PyMySQL==1.1.2",
-	"SQLAlchemy==2.0.43",
-	"dill==0.4.0",
-	"Flask-Limiter>=3.0.0" # added this one for the brute-force thing
+    "PyMuPDF>=1.21.1",
+    "Flask==3.0.3",
+    "gunicorn==21.2.0",
+    "PyMySQL==1.1.2",
+    "SQLAlchemy==2.0.43",
+    "dill==0.4.0",
+    "Flask-Limiter>=3.0.0",
+    "rmap @ git+https://github.com/nharrand/RMAP-Server.git@v1.0.0"
 ]
 
 [project.optional-dependencies]
@@ -24,4 +29,4 @@ testpaths = ["test/"]
 python_files = ["test_*.py"]
 
 [project.scripts]
-pdfwm = "watermarking_cli:main"                 # now you can run `pdfwm methods`
+pdfwm = "watermarking_cli:main"

@@ -31,6 +31,9 @@ from watermarking_method import WatermarkingMethod
 
 def create_app():
     app = Flask(__name__)
+    # added for RMAP
+    from server.rmap_endpoints import bp as rmap_bp
+    app.register_blueprint(rmap_bp)
 
 #added this to prevent eg. brute-force - baseline for the whole app
     limiter = Limiter(
