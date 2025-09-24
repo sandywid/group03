@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="style.css">
   <style>
     /* Added a new design, just to make it look a bit better/Sandra */
-    <style>
     /* ==== Tabell ==== */
     .table tbody tr {
       border-bottom: 1px solid #e5e7eb; 
@@ -48,13 +47,13 @@
 
     /* headbuttom  */
     .btn--primary {
-      background: #4f46e5;
-      border-color: #4f46e5;
+      background: #9f801a;
+      border-color: #9f801a;
       color: #fff;
     }
     .btn--primary:hover {
-      background: #4338ca;
-      border-color: #4338ca;
+      background: #9f801a;
+      border-color: #9f801a;
     }
 
     .btn--ghost {
@@ -70,10 +69,64 @@
       background: #fef2f2;
       color: #b91c1c;
     }
+
     .btn--danger:hover {
       background: #fee2e2;
       border-color: #f87171;
     }
+
+    /* ==== Page background ==== */
+    body {
+      background-color: #ede7dd;
+    }
+
+        /* Force flat background, no gradients */
+    html, body {
+      background: #ede7dd !important;  
+      background-image: none !important;
+    }
+    
+    body::before,
+    body::after {
+      content: none !important;
+    }
+
+        /* === Baslayout & bakgrund === */
+    html, body {
+      background: #ede7dd;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* === Header === */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #ffffffcc;            /* lätt transparent vit */
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    /* === Show/Hide-knappar för lösenord (rosa) === */
+    .pw-toggle {
+      background-color: #9f801a ; /* rosa */
+      color: white;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .pw-toggle:hover {
+      background-color: #D4AF37 ;
+    }
+
+
   </style>
   </head>
 <body>
@@ -306,8 +359,14 @@
         <form id="createWmForm" class="form-vertical">
           <label>Method<select name="method" required><option value="" disabled selected>Select a method</option>${options}</select></label>
           <label>Position<input name="position" placeholder="Position"></label>
-          <label>Key<input name="key" placeholder="Reader key" required></label>
-          <label>Secret<input name="secret" placeholder="Secret embedded in WM" required></label>
+          <label>Key
+            <input type="password" name="key" placeholder="Reader key" required
+            autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+          <label>Secret
+            <input type="password" name="secret" placeholder="Secret embedded in WM" required
+            autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
           <label>Intended for<input name="intended_for" placeholder="Recipient or purpose"></label>
           <div class="row-actions">
             <button class="btn" type="button" id="cancelCreate">Cancel</button>
@@ -341,7 +400,10 @@
         <form id="readWmForm" class="form-vertical">
           <label>Method<select name="method" required><option value="" disabled selected>Select a method</option>${options}</select></label>
           <label>Position<input name="position" placeholder="Position"></label>
-          <label>Key<input name="key" placeholder="Reader key" required></label>
+          <label>Key
+            <input type="password" name="key" placeholder="Reader key" required
+            autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
           <div class="row-actions">
             <button class="btn" type="button" id="cancelRead">Cancel</button>
             <button class="btn btn--primary" type="submit">Read</button>
@@ -369,7 +431,10 @@
     async function openReadWatermarkFormForVersion(docId, versionId){
       openModal('Read watermark for #' + docId, `
         <form id="readWmForm" class="form-vertical">
-          <label>Key<input name="key" placeholder="Reader key" required></label>
+          <label>Key
+            <input type="password" name="key" placeholder="Reader key" required
+            autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
           <div class="row-actions">
             <button class="btn" type="button" id="cancelRead">Cancel</button>
             <button class="btn btn--primary" type="submit">Read</button>
@@ -429,5 +494,78 @@
     document.getElementById('logoutBtn').onclick = () => { localStorage.removeItem('authToken'); window.location.href = 'login.html'; };
     loadDocuments();
   </script>
+
+  <script>
+    (function () {
+      // Lägg gärna lite enkel styling via klass istället för inline
+      const WRAPPER_CLASS = "pw-wrapper";
+      const BUTTON_CLASS = "pw-toggle";
+    
+      // 1) Hjälpfunktion: wrappa ett enda input-fält och lägg till knapp
+      function wrapPasswordInput(input) {
+        if (!input || input.type !== "password") return;
+        if (input.dataset.pwToggleAttached === "1") return; // redan gjort
+    
+        // Skapa wrapper
+        const wrapper = document.createElement("div");
+        wrapper.className = WRAPPER_CLASS;
+        wrapper.style.display = "flex";
+        wrapper.style.gap = "8px";
+        wrapper.style.alignItems = "center";
+    
+        // Sätt flagga så vi inte gör om
+        input.dataset.pwToggleAttached = "1";
+    
+        // Flytta in input i wrapper (bevarar eventuellt label > input-struktur, eftersom vi byter plats inuti samma parent)
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+    
+        // Skapa knapp
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = BUTTON_CLASS;
+        btn.textContent = "Show";
+    
+        btn.addEventListener("click", () => {
+          if (input.type === "password") {
+            input.type = "text";
+            btn.textContent = "Hide";
+          } else {
+            input.type = "password";
+            btn.textContent = "Show";
+          }
+        });
+    
+        wrapper.appendChild(btn);
+      }
+    
+      // 2) Applicera på alla befintliga password-fält (om sidan redan hade några)
+      function applyToAllExisting() {
+        document.querySelectorAll('input[type="password"]').forEach(wrapPasswordInput);
+      }
+    
+      // 3) Observer som fångar upp nya password-fält som dyker upp senare (t.ex. i modaler)
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          // Om en nod med barn lades till, sök efter password-inputs i dess subtree
+          m.addedNodes.forEach(node => {
+            if (node.nodeType !== 1) return; // element
+            if (node.matches && node.matches('input[type="password"]')) {
+              wrapPasswordInput(node);
+            }
+            // även för barn, om en container lades till
+            node.querySelectorAll?.('input[type="password"]').forEach(wrapPasswordInput);
+          });
+        }
+      });
+    
+      // 4) Starta när DOM är redo
+      document.addEventListener("DOMContentLoaded", () => {
+        applyToAllExisting();
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+    })();
+    </script>  
+
 </body>
 </html>
