@@ -30,6 +30,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends gnupg \
  && rm -rf /var/lib/apt/lists/*
 
+#added this for my watermark nr2
+RUN apt-get update && apt-get install -y qpdf && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pikepdf
+
+
 # Default command runs the web server
 CMD ["gunicorn", "-b", "0.0.0.0:5000", "server:app"]
 
