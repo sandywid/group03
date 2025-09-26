@@ -75,7 +75,7 @@ SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
 # Filer/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "enisaguide.pdf"   # <-- se till att denna finns i static/
+BASE_PDF = STATIC_DIR / "Group_3.pdf"   # <-- se till att denna finns i static/
 
 SERVER_PRIV_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
 
