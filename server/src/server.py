@@ -8,6 +8,9 @@ import datetime as dt
 from pathlib import Path
 from functools import wraps
 
+import base64 #added for end of pahse /Sandra
+import binascii #added for end of pahse /Sandra
+
 from flask import Flask, jsonify, request, g, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -20,19 +23,143 @@ from flask_limiter.util import get_remote_address
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+#added this for end of phase update/Sandra 
+import shutil
+from pathlib import Path
+from flask import Flask, request, jsonify, send_from_directory, url_for
+from werkzeug.exceptions import BadRequest
+import json
+import tempfile
+import subprocess
+from flask import current_app
+from sqlalchemy import text, create_engine
+from datetime import datetime
+
+def _db_url_from_cfg(cfg) -> str:
+    return (
+        f"mysql+pymysql://{cfg['DB_USER']}:{cfg['DB_PASSWORD']}"
+        f"@{cfg['DB_HOST']}:{cfg['DB_PORT']}/{cfg['DB_NAME']}?charset=utf8mb4"
+    )
+
+def get_engine():
+    app = current_app  # använder den aktiva Flask-appen
+    eng = app.config.get("_ENGINE")
+    if eng is None:
+        eng = create_engine(_db_url_from_cfg(app.config), pool_pre_ping=True, future=True)
+        app.config["_ENGINE"] = eng
+    return eng
+
+
+from rmap.identity_manager import IdentityManager
+from rmap.rmap import RMAP
+
 import pickle as _std_pickle
 try:
     import dill as _pickle  # allows loading classes not importable by module path
 except Exception:  # dill is optional
     _pickle = _std_pickle
 
+rmap = None # /Sandra
 
 import watermarking_utils as WMUtils
 from watermarking_method import WatermarkingMethod
 #from watermarking_utils import METHODS, apply_watermark, read_watermark, explore_pdf, is_watermarking_applicable, get_method
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Keys /Sandra
+KEYS_DIR = os.path.join(BASE_DIR, "keys")
+CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
+SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
+SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
+
+# Filer/PDF /Sandra
+STATIC_DIR = Path(BASE_DIR) / "static"
+BASE_PDF = STATIC_DIR / "enisaguide.pdf"   # <-- se till att denna finns i static/
+
+SERVER_PRIV_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
+
+def init_rmap():
+    """Initiera RMAP med rätt nyckelvägar."""
+    id_manager = IdentityManager(
+        CLIENT_KEYS_DIR,  # klienters publika nycklar (clients/*.asc)
+        SERVER_PUB,       # serverns publika nyckel
+        SERVER_PRIV,       # serverns privata nyckel
+        SERVER_PRIV_PASSPHRASE #key to our privatekey
+    )
+    return RMAP(id_manager)
+
+
+def _ensure_dirs():
+    (Path(current_app.config["STORAGE_DIR"]) / "versions").mkdir(parents=True, exist_ok=True)
+
+def _watermark_and_save(secret: str) -> str:
+    """
+    Skapar vattenmärkt PDF av BASE_PDF med 'secret' som stämpeltext.
+    Sparas som static/versions/<secret>.pdf
+    Returnerar absolut sökväg till den vattenmärkta filen.
+    """
+    _ensure_dirs()
+    if not BASE_PDF.exists():
+        raise BadRequest(f"Saknar original-PDF: {BASE_PDF}")
+
+    out_path = VERSIONS_DIR / f"{secret}.pdf"
+    # PDFish & Chips — stämpla hemligheten i PDF:en
+    add_stamp(str(BASE_PDF), str(out_path), str(secret))
+
+    # Fallback om något gick fel
+    if not out_path.exists() or out_path.stat().st_size == 0:
+        shutil.copyfile(BASE_PDF, out_path)
+
+    return str(out_path)
+
+#added for end of phase oen update so that they will get a DocumentID / Sandra
+
+def _file_sha256_hex(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def _ensure_document_for_path(path_str: str, owner_id: int = 1) -> int:
+    p = Path(path_str)
+    
+    with get_engine().begin() as conn:
+        row = conn.execute(text("""
+            SELECT id FROM Documents WHERE path = :path LIMIT 1
+        """), {"path": str(p)}).first()
+        if row:
+            return int(row.id)
+
+    # Saknas filen på disk? ge tydligt fel
+    if not p.is_file():
+        raise FileNotFoundError(f"Source PDF not found: {p.resolve()}")
+      
+    sha_hex = _file_sha256_hex(p)
+    size = p.stat().st_size
+
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+            INSERT INTO Documents (name, path, ownerid, sha256, size)
+            VALUES (:name, :path, :ownerid, UNHEX(:sha256hex), :size)
+        """), {
+            "name": p.name,
+            "path": str(p),
+            "ownerid": owner_id,
+            "sha256hex": sha_hex,
+            "size": int(size),
+        })
+        new_id = conn.execute(text("SELECT LAST_INSERT_ID()")).scalar()
+        return int(new_id)
+
 def create_app():
     app = Flask(__name__)
+    #added for end of phase one /Sandra
+    global rmap
+    if rmap is None:
+        rmap = init_rmap()
+
 
 #added this to prevent eg. brute-force - baseline for the whole app/Sandra
     limiter = Limiter(
@@ -437,51 +564,39 @@ def create_app():
     
     # GET /api/get-version/<link>  → returns the watermarked PDF (inline)
     @app.get("/api/get-version/<link>")
-    def get_version(link: str):
-        
-        try:
-            with get_engine().connect() as conn:
-                row = conn.execute(
-                    text("""
-                        SELECT *
-                        FROM Versions
-                        WHERE link = :link
-                        LIMIT 1
-                    """),
-                    {"link": link},
-                ).first()
-        except Exception as e:
-            return jsonify({"error": f"database error: {str(e)}"}), 503
+    def get_version_api(link: str):
+        link_in = link  # behåll EXAKT sträng från webben
 
-        # Don’t leak whether a doc exists for another user
-        if not row:
-            return jsonify({"error": "document not found"}), 404
+        # 1) Försök exakt match i DB
+        with get_engine().begin() as conn:
+            path_str = conn.execute(
+                text("SELECT path FROM Versions WHERE link = :link LIMIT 1"),
+                {"link": link_in},
+            ).scalar_one_or_none()
 
-        file_path = Path(row.path)
+            # 2) Fallback: om det ser ut som 32-hex, testa lowercase (bakåtkomp.)
+            if path_str is None and re.fullmatch(r"[0-9A-Fa-f]{32}", link_in):
+                path_str = conn.execute(
+                    text("SELECT path FROM Versions WHERE link = :link LIMIT 1"),
+                    {"link": link_in.lower()},
+                ).scalar_one_or_none()
 
-        # Basic safety: ensure path is inside STORAGE_DIR and exists
-        try:
-            file_path.resolve().relative_to(app.config["STORAGE_DIR"].resolve())
-        except Exception:
-            # Path looks suspicious or outside storage
-            return jsonify({"error": "document path invalid"}), 500
+        if path_str is None:
+            return jsonify({"error": "not found"}), 404
 
-        if not file_path.exists():
-            return jsonify({"error": "file missing on disk"}), 410
+        p = Path(path_str)
+        if not p.is_file():
+            return jsonify({"error": "file missing"}), 410
 
-        # Serve inline with caching hints + ETag based on stored sha256
         resp = send_file(
-            file_path,
+            p,
             mimetype="application/pdf",
             as_attachment=False,
-            download_name=row.link if row.link.lower().endswith(".pdf") else f"{row.link}.pdf",
-            conditional=True,   # enables 304 if If-Modified-Since/Range handling
-            max_age=0,
-            last_modified=file_path.stat().st_mtime,
+            download_name=p.name,
         )
-
-        resp.headers["Cache-Control"] = "private, max-age=0"
+        resp.headers["Cache-Control"] = "private, no-store"
         return resp
+
     
     # Helper: resolve path safely under STORAGE_DIR (handles absolute/relative)
     def _safe_resolve_under_storage(p: str, storage_root: Path) -> Path:
@@ -556,9 +671,6 @@ def create_app():
         # Delete DB row (will cascade to Version if FK has ON DELETE CASCADE)
         try:
             with get_engine().begin() as conn:
-                # If your schema does NOT have ON DELETE CASCADE on Version.documentid,
-                # uncomment the next line first:
-                # conn.execute(text("DELETE FROM Version WHERE documentid = :id"), {"id": doc_id})
                 conn.execute(text("DELETE FROM Documents WHERE id = :id"), {"id": doc_id})
         except Exception as e:
             return jsonify({"error": f"database error during delete: {str(e)}"}), 503
@@ -590,7 +702,7 @@ def create_app():
             return jsonify({"error": "document id required"}), 400
             
         payload = request.get_json(silent=True) or {}
-        # allow a couple of aliases for convenience
+        # allow a couple of aliases for convenience /Sandra
         method = payload.get("method")
         intended_for = payload.get("intended_for")
         position = payload.get("position") or None
@@ -924,11 +1036,224 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"Error when attempting to read watermark: {e}"}), 400
 
-    
+#added this for end of phase one/Sandra
+
+    def _version_output_path(document_id: int, link_hex: str) -> Path:
+        root = Path(current_app.config["STORAGE_DIR"]) / "versions"
+        now = datetime.utcnow()
+        return (root / f"{now:%Y}" / f"{now:%m}" / str(document_id) / f"{link_hex}.pdf")
+
+    def _create_rmap_watermarked_pdf(link_secret: str) -> str:
+        if not BASE_PDF.exists():
+            raise RuntimeError(f"Missing original PDF: {BASE_PDF}")
+
+        doc_id = _ensure_document_for_path(str(BASE_PDF), owner_id=1)
+        out_path = _version_output_path(doc_id, link_secret)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # --- försök bästa metod ---
+        try:
+            from PDFishAndChipsStamp import PDFishAndChipsStamp
+            wm = PDFishAndChipsStamp()
+            watermarked_bytes = wm.add_watermark(
+                pdf=str(BASE_PDF),
+                secret=str(link_secret),
+                key="rmap_session_key_2025",
+                position=None,
+            )
+            out_path.write_bytes(watermarked_bytes)
+            return str(out_path)
+        except Exception:
+            pass
+
+        # --- fallback 1 ---
+        try:
+            from add_stamp import add_stamp
+            watermarked_bytes = add_stamp(
+                pdf=str(BASE_PDF),
+                secret=str(link_secret),
+                position=None,
+            )
+            out_path.write_bytes(watermarked_bytes)
+            return str(out_path)
+        except Exception:
+            pass
+
+        # --- sista fallback: kopiera originalet ---
+        out_path.write_bytes(Path(BASE_PDF).read_bytes())
+        return str(out_path)
+
+        """
+        Skapa/skriv vattenmärkt PDF för given länkhemlighet och returnera sökvägen.
+        Provar PDFishAndChipsStamp -> add_stamp -> kopiera original (sista fallback).
+        """
+        _ensure_dirs()
+        if not BASE_PDF.exists():
+            raise RuntimeError(f"Missing original PDF: {BASE_PDF}")
+
+        out_path = VERSIONS_DIR / f"{link_secret}.pdf"
+
+        # 1) bästa metod
+        try:
+            from PDFishAndChipsStamp import PDFishAndChipsStamp
+            wm = PDFishAndChipsStamp()
+            watermarked_bytes = wm.add_watermark(
+                pdf=str(BASE_PDF),
+                secret=str(link_secret),
+                key="rmap_session_key_2025",
+                position=None,
+            )
+            with open(out_path, "wb") as f:
+                f.write(watermarked_bytes)
+            if out_path.stat().st_size > 0:
+                return str(out_path)
+        except Exception as e:
+            current_app.logger.warning(f"PDFishAndChipsStamp failed: {e}")
+
+        # 2) fallback: someone else method to change to? /Sandra
+        try:
+            from stamp import add_stamp  
+            add_stamp(str(BASE_PDF), str(out_path), str(link_secret))
+            if out_path.exists() and out_path.stat().st_size > 0:
+                return str(out_path)
+        except Exception as e:
+            current_app.logger.warning(f"add_stamp fallback failed: {e}")
+
+        # just to see if the thing work / Sandra
+        shutil.copyfile(BASE_PDF, out_path)
+        if out_path.exists() and out_path.stat().st_size > 0:
+            return str(out_path)
+
+        raise RuntimeError("Failed to create watermarked PDF")
+
+#added for end of phase one /Sandra
+
+    def _store_rmap_version(link_hex: str, path: str) -> None:
+        """
+        Skriv en rad i Versions för den skapade vattenmärkta filen.
+        - documentid: pekar på BASE_PDF:ens Documents-id
+        - intended_for: 'RMAP'
+        - secret: samma bytes som link (UNHEX)
+        - method: t.ex. 'RMAPBest'
+        - position: t.ex. 'bottom-right'
+        - path: full sökväg på disk under STORAGE_DIR
+        """
+        document_id = _ensure_document_for_path(str(BASE_PDF), owner_id=1)
+        with get_engine().begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO Versions (documentid, link, intended_for, secret, method, position, path)
+                    VALUES (:documentid, :link, :intended_for, :secret_hex, :method, :position, :path)
+                """),
+                {
+                    "documentid": int(document_id),
+                    "link": link_hex.lower(),
+                    "intended_for": "RMAP",
+                    "secret_hex": link_hex.lower(),   # samma 32 byte som link representerar
+                    "method": "RMAPBest",
+                    "position": "bottom-right",
+                    "path": str(path),
+                },
+            )
+
+
+    # --- /rmap-initiate: pass-through av base64 till RMAP, returnera RMAP:s base64 ---
+    @app.route("/rmap-initiate", methods=["POST"])
+    def rmap_initiate():
+        incoming = request.get_json(force=True, silent=True) or {}
+        b64 = (incoming.get("payload") or "").strip()
+        if not b64:
+            return jsonify({"error": "Missing 'payload'"}), 400
+
+        try:
+            # Skicka base64 direkt – RMAP gör base64→PGP→JSON internt
+            resp = rmap.handle_message1({"payload": b64})
+        except Exception as e:
+            return jsonify({"error": f"Invalid Message1: {e}"}), 400
+
+        # RMAP bör ge {"payload":"<base64>"} eller ev. en str med base64
+        if isinstance(resp, dict) and isinstance(resp.get("payload"), str):
+            return jsonify({"payload": resp["payload"]}), 200
+        elif isinstance(resp, (str, bytes)):
+            out = resp.decode() if isinstance(resp, bytes) else resp
+            return jsonify({"payload": out}), 200
+
+        return jsonify({"error": "RMAP message1 did not return a PGP payload",
+                        "debug": str(resp)[:200]}), 400
+
+
+
+    # --- /rmap-get-link: pass-through av base64 till RMAP, bygg 32-hex av noncerna ---
+    @app.route("/rmap-get-link", methods=["POST"])
+    def rmap_get_link():
+        incoming = request.get_json(force=True, silent=True) or {}
+        b64 = (incoming.get("payload") or "").strip()
+        if not b64:
+            return jsonify({"error": "Missing 'payload'"}), 400
+
+        try:
+            session_info = rmap.handle_message2({"payload": b64})
+            if isinstance(session_info, str):
+                # kan vara JSON-sträng eller redan en 32-hex
+                s = session_info.strip()
+                try:
+                    session_info = json.loads(s)
+                except Exception:
+                    if len(s) == 32 and all(c in "0123456789abcdef" for c in s.lower()):
+                        # skapa/pdf + spara
+                        pdf_path = _create_rmap_watermarked_pdf(s)
+                        _store_rmap_version(s, pdf_path)
+                        return jsonify({"result": s}), 200
+                    return jsonify({"error": "Unexpected Message2 string", "debug": s[:200]}), 400
+        except Exception as e:
+            return jsonify({"error": f"Invalid Message2: {e}"}), 400
+
+        if isinstance(session_info, dict):
+            # 1) redan färdig länk?
+            maybe_result = session_info.get("result") or session_info.get("link")
+            if isinstance(maybe_result, str):
+                s = maybe_result.strip()
+                if len(s) == 32 and all(c in "0123456789abcdef" for c in s.lower()):
+                    pdf_path = _create_rmap_watermarked_pdf(s)
+                    _store_rmap_version(s, pdf_path)
+                    return jsonify({"result": s}), 200
+
+            # 2) annars, bygg 32-hex av noncer (snake/camel + str/int)
+            def _get_int(d, *keys):
+                v = None
+                for k in keys:
+                    if k in d:
+                        v = d[k]
+                        break
+                if isinstance(v, int):
+                    return v
+                if isinstance(v, str):
+                    v = v.strip()
+                    for base in (10, 16):
+                        try:
+                            return int(v, base)
+                        except ValueError:
+                            pass
+                return None
+
+            nc = _get_int(session_info, "nonce_client", "nonceClient")
+            ns = _get_int(session_info, "nonce_server", "nonceServer")
+            if isinstance(nc, int) and isinstance(ns, int):
+                link_hex = f"{nc:016x}{ns:016x}"
+                pdf_path = _create_rmap_watermarked_pdf(link_hex)
+                _store_rmap_version(link_hex, pdf_path)
+                return jsonify({"result": link_hex}), 200
+
+        return jsonify({"error": "Invalid session info (missing nonces)",
+                        "debug": session_info}), 400
+
+
     #added this for the brute-force thing aka. flask_limiter /Sandra
     @app.errorhandler(429)
     def ratelimit_handler(e):
         return jsonify(error="rate_limited", detail=str(e.description)), 429
+
+
 
     return app
     

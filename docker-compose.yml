@@ -6,9 +6,10 @@ services:
       context: server
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5050:5000"
     volumes:
       - user-files:/app/storage
+      - ./server/src/keys:/app/src/keys:ro #added this one for the keys/Sandra
     environment:
       - PYTHONUNBUFFERED=1
       # DB connection details for future use by the API
@@ -18,6 +19,7 @@ services:
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
       - SECRET_KEY=${SECRET_KEY} #Added this here too/Sandra
+      - SERVER_PRIV_PASSPHRASE=${SERVER_PRIV_PASSPHRASE} #added this for key to out secrey key/Sandra
     depends_on:
       db:
         condition: service_healthy
