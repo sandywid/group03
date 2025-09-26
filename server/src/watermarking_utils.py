@@ -9,41 +9,25 @@ This module exposes:
 - :func:`explore_pdf`: build a lightweight JSON-serializable tree of PDF
   nodes with deterministic identifiers ("name nodes").
 - :func:`apply_watermark`: run a concrete watermarking method on a PDF.
-- :func:`apply_watermark`: run a concrete watermarking method on a PDF.
 - :func:`read_watermark`: recover a secret using a concrete method.
 - :func:`register_method` / :func:`get_method`: registry helpers.
-
-Dependencies
-------------
-Only the standard library is required. If available, the exploration
-routine will use *PyMuPDF* (``fitz``) for a richer object inventory. If
-``fitz`` is not installed, it gracefully falls back to a permissive
-regex-based scan for ``obj ... endobj`` blocks (this may miss compressed
-object streams).
-
-To enable the richer exploration, install PyMuPDF:
-
-    pip install pymupdf
-
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Final, Iterable, List, Mapping
-import base64
+from typing import Any, Dict, Final, List
 import hashlib
-import io
-import json
-import os
 import re
+
+# Import methods
+from invisible_text import InvisibleTextWatermark
+from add_after_eof import AddAfterEOF
 
 from watermarking_method import (
     PdfSource,
     WatermarkingMethod,
     load_pdf_bytes,
 )
-from add_after_eof import AddAfterEOF
-# Took away: "from unsafe_bash_bridge_append_eof import UnsafeBashBridgeAppendEOF"/Sandra
-from PDFishAndChipsStamp import PDFishAndChipsStamp #added my watermarkingmethod/Sandra
 
 # --------------------
 # Method registry
@@ -51,14 +35,8 @@ from PDFishAndChipsStamp import PDFishAndChipsStamp #added my watermarkingmethod
 
 METHODS: Dict[str, WatermarkingMethod] = {
     AddAfterEOF.name: AddAfterEOF(),
-    PDFishAndChipsStamp.name: PDFishAndChipsStamp(), #added my watermarkingmetod /Sandra 
+    InvisibleTextWatermark.name: InvisibleTextWatermark(),
 }
-
-#changed/took away this one too/Sandra
-#METHODS: Dict[str, WatermarkingMethod] = {
-   #AddAfterEOF.name: AddAfterEOF(),
-   #UnsafeBashBridgeAppendEOF.name: UnsafeBashBridgeAppendEOF()
-#}
 
 """Registry of available watermarking methods.
 
@@ -74,13 +52,7 @@ def register_method(method: WatermarkingMethod) -> None:
 
 
 def get_method(method: str | WatermarkingMethod) -> WatermarkingMethod:
-    """Resolve a method from a string name or pass-through an instance.
-
-    Raises
-    ------
-    KeyError
-        If ``method`` is a string not present in :data:`METHODS`.
-    """
+    """Resolve a method from a string name or pass-through an instance."""
     if isinstance(method, WatermarkingMethod):
         return method
     try:
@@ -106,12 +78,13 @@ def apply_watermark(
     m = get_method(method)
     return m.add_watermark(pdf=pdf, secret=secret, key=key, position=position)
 
+
 def is_watermarking_applicable(
     method: str | WatermarkingMethod,
     pdf: PdfSource,
     position: str | None = None,
-) -> bytes:
-    """Apply a watermark using the specified method and return new PDF bytes."""
+) -> bool:
+    """Check if a watermark can be applied with the given method."""
     m = get_method(method)
     return m.is_watermark_applicable(pdf=pdf, position=position)
 
@@ -139,30 +112,7 @@ def _sha1(b: bytes) -> str:
 
 
 def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
-    """Return a JSON-serializable *tree* describing the PDF's nodes.
-
-    The structure is deterministic for a given set of input bytes. When
-    PyMuPDF (``fitz``) is available, the function uses the cross
-    reference (xref) table to enumerate objects and page nodes. When not
-    available, it falls back to scanning for ``obj`` / ``endobj`` blocks.
-
-    The returned dictionary has the following shape (fields may be
-    omitted when data is unavailable):
-
-    .. code-block:: json
-
-        {
-          "id": "pdf:<sha1>",
-          "type": "Document",
-          "size": 12345,
-          "children": [
-            {"id": "page:0000", "type": "Page", ...},
-            {"id": "obj:000001", "type": "XObject", ...}
-          ]
-        }
-
-    Each node includes a deterministic ``id`` suitable as a "name node".
-    """
+    """Return a JSON-serializable *tree* describing the PDF's nodes."""
     data = load_pdf_bytes(pdf)
 
     root: Dict[str, Any] = {
@@ -194,7 +144,6 @@ def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
             except Exception:
                 s = ""
             s_bytes = s.encode("latin-1", "replace") if isinstance(s, str) else b""
-            # Type detection
             m = _TYPE_RE.search(s_bytes)
             pdf_type = m.group(1).decode("ascii", "replace") if m else "Object"
             node = {
@@ -209,10 +158,9 @@ def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
         doc.close()
         return root
     except Exception:
-        # Fallback: regex-based object scanning (no third-party deps)
+        # Fallback: regex-based object scanning
         pass
 
-    # Regex fallback: enumerate uncompressed objects
     children: List[Dict[str, Any]] = []
     for m in _OBJ_RE.finditer(data):
         obj_num = int(m.group(1))
@@ -221,7 +169,6 @@ def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
         end_match = _ENDOBJ_RE.search(data, start)
         end = end_match.start() if end_match else start
         slice_bytes = data[start:end]
-        # Guess type
         t = _TYPE_RE.search(slice_bytes)
         pdf_type = t.group(1).decode("ascii", "replace") if t else "Object"
         node = {
@@ -233,10 +180,9 @@ def explore_pdf(pdf: PdfSource) -> Dict[str, Any]:
         }
         children.append(node)
 
-    # Also derive simple page nodes by searching for '/Type /Page'
+    # Derive page nodes
     page_nodes = [c for c in children if c.get("type") == "Page"]
     for i, c in enumerate(page_nodes):
-        # Provide deterministic page IDs independent from object numbers
         c_page = {
             "id": f"page:{i:04d}",
             "type": "Page",
@@ -255,6 +201,5 @@ __all__ = [
     "apply_watermark",
     "read_watermark",
     "explore_pdf",
-    "is_watermarking_applicable"
+    "is_watermarking_applicable",
 ]
-
