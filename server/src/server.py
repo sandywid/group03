@@ -1109,8 +1109,8 @@ def create_app():
                     "link": link_hex.lower(),
                     "intended_for": "RMAP",
                     "secret_hex": link_hex.lower(),   # samma 32 byte som link representerar
-                    "method": "RMAPBest",
-                    "position": "bottom-right",
+                    "method": "Our method",
+                    "position": "none",
                     "path": str(path),
                 },
             )
@@ -1169,7 +1169,7 @@ def create_app():
                     identity = _identity_from_ns(ns)
                     pdf_path = _create_rmap_watermarked_pdf(s, identity=identity)
                     _store_rmap_version(s, pdf_path)
-                    return jsonify({"result": s, "identity": identity}), 200
+                    return jsonify({"result": s}), 200
                 return jsonify({"error": "Unexpected Message2 string", "debug": s[:200]}), 400
 
 
@@ -1184,7 +1184,7 @@ def create_app():
                     identity = _identity_from_ns(ns)
                     pdf_path = _create_rmap_watermarked_pdf(s, identity=identity)
                     _store_rmap_version(s, pdf_path)
-                    return jsonify({"result": s, "identity": identity}), 200
+                    return jsonify({"result": s}), 200
 
 
             # 2) annars, bygg 32-hex av noncer (snake/camel + str/int)
@@ -1212,8 +1212,8 @@ def create_app():
                 identity = _identity_from_ns(ns)
                 pdf_path = _create_rmap_watermarked_pdf(link_hex, identity=identity)
                 _store_rmap_version(link_hex, pdf_path)
-                return jsonify({"result": link_hex, "identity": identity}), 200 #take away this!!!/Sandra
-#take away!! /Sandra return identitiy 
+                return jsonify({"result": link_hex}), 200 #returns the link /Sandra
+
 
         return jsonify({"error": "Invalid session info (missing nonces)",
                         "debug": session_info}), 400
@@ -1222,7 +1222,7 @@ def create_app():
     def _identity_from_ns(ns: int) -> str | None:
         """
         Försök hitta identity via nonceServer (ns) i RMAP:s in-memory state.
-        RMAP håller self.nonces: {identity: (nonceClient, nonceServer)}
+        RMAP håller self.nonces: {identity: (nonceClient, nonceServer)} / Sandra
         """
         try:
             for ident, pair in getattr(rmap, "nonces", {}).items():
