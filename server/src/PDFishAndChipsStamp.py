@@ -1,112 +1,158 @@
-#  PDFishAndChipsStamp.py
-#
-# - Encrypts 'secret' with key (AES-GCM).
-# - Builds bitstream: MAGIC (7B) + 32-bit length + payload (JSON bytes).
-# - Embedding: writes each bit in the LSB parity of the last digit in each number token.
-# - Extraction: reads back in the same order.
-#
-# This file is self-contained and attempts to reuse the project's
-# watermarking_method for exceptions/base class.
+# PDFishAndChipsStamp.py
 
 
 from __future__ import annotations
+
 import os
+import io
 import re
+import uuid
 import json
 import base64
 import hashlib
-import struct
-from typing import Iterator, Tuple, Optional
+from dataclasses import dataclass
+from typing import Optional
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+# ---- Exceptions (matchar projektets förväntningar) ----
+class WatermarkingError(Exception): ...
+class SecretNotFoundError(Exception): ...
+class InvalidKeyError(Exception): ...
+
+# ---- Backends ----
 try:
-    import watermarking_method
-    WatermarkingMethodBase = getattr(watermarking_method, "WatermarkingMethod", object)
-    WatermarkingError = getattr(watermarking_method, "WatermarkingError", Exception)
-    SecretNotFoundError = getattr(watermarking_method, "SecretNotFoundError", Exception)
-    InvalidKeyError = getattr(watermarking_method, "InvalidKeyError", Exception)
+    import pikepdf  # type: ignore
+    from pikepdf import Name, Dictionary
+    HAVE_PIKEPDF = True
 except Exception:
-    WatermarkingMethodBase = object
-    class WatermarkingError(Exception): pass
-    class SecretNotFoundError(Exception): pass
-    class InvalidKeyError(Exception): pass
+    HAVE_PIKEPDF = False
 
-# AES-GCM
-try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-except Exception:
-    AESGCM = None  # incremented when used
 
-class PDFishAndChipsStamp(WatermarkingMethodBase):
-    
+@dataclass
+class Result:
+    pages_streamed: int
+    xmp_ok: bool
+    attachment_ok: bool
+
+
+class PDFishAndChipsStamp:
     name = "PDFishAndChipsStamp"
 
-    # --- Class constants for basic stream ---
-    _MAGIC = b"ADVWM1|"   # 7 bytes
-    _LEN_BITS = 32        # 32-bit längdfält
-    _HEADER_BITS = len(_MAGIC) * 8 + _LEN_BITS
-
-    # Keep CHUNK_SIZE for compatibility, not used in stream mode
-    _CHUNK_SIZE = 4
-
-    def __init__(self):
-        super().__init__() if hasattr(super(), "__init__") else None
-
-    # ====== Abstract methods of the base class (minimal implementations) ======
     @staticmethod
     def get_usage() -> str:
         return "Please enter your secret and key"
- 
-
+    
     def is_watermark_applicable(self, pdf, **kwargs) -> bool:
         return True
 
+    def __init__(self, tag: bytes = b"FISHANDCHIPS"):
+        if not HAVE_PIKEPDF:
+            raise ModuleNotFoundError("pikepdf is required. Install with: pip install pikepdf")
+        self.tag = tag
+        uid = uuid.uuid4().hex[:8]
+        self.xmp_namespace_uri = f"urn:uuid:{uuid.uuid4()}"
+        self.xmp_prefix = f"ns{uid}"
+        self.xmp_key = f"{self.xmp_prefix}:d"
+        self.embedded_filename = f"._meta{uid}.bin"
 
-    # ====== Public API ======
-    def add_watermark(self, pdf, secret: str, key: str, position: Optional[str] = None) -> bytes:
+    # === Kompatibilitets-anrop ===
+    def add_watermark(self, *args, **kwargs):
+        """
+        Compat:
+        - Old style: add_watermark(pdf, secret: str, key: str, position: Optional[str]=None) -> bytes
+        - Old style via kwargs: add_watermark(pdf=..., secret=..., key=..., position=None) -> bytes
+        - New style: add_watermark(in_pdf=..., out_pdf=..., payload=..., all_pages=True, ...) -> Result
+        """
+        # 1) gammal stil – positionella argument
+        if len(args) >= 3 and isinstance(args[1], str) and isinstance(args[2], str):
+            pdf = args[0]
+            secret = args[1]
+            key = args[2]
+            # position ignoreras i nya metoden
+            return self._add_legacy_wrapper(pdf, secret, key)
+
+        # 2) gammal stil – kwargs
+        if all(k in kwargs for k in ("pdf", "secret", "key")):
+            pdf = kwargs.get("pdf")
+            secret = kwargs.get("secret")
+            key = kwargs.get("key")
+            return self._add_legacy_wrapper(pdf, secret, key)
+
+        # 3) ny stil
+        return self._add_watermark_newstyle(*args, **kwargs)
+
+    def _add_legacy_wrapper(self, pdf, secret: str, key: str) -> bytes:
         if not secret or not key:
             raise ValueError("Both secret and key are required fields")
-
-        pdf_bytes = self._load_pdf_bytes(pdf)
-        payload = self._prepare_payload(secret, key)
-        return self._embed_stream(pdf_bytes, payload)
-
-    def read_secret(self, pdf, key: str) -> str:
-        if not key:
-            raise ValueError("Key is required")
-
-        pdf_bytes = self._load_pdf_bytes(pdf)
-        extracted = self._extract_stream(pdf_bytes)
-        if not extracted:
-            raise SecretNotFoundError("No watermark found")
-
+        payload = self._prepare_payload(str(secret), str(key))
+        # bädda in med nya backenden och returnera bytes
+        if isinstance(pdf, (bytes, bytearray)):
+            doc = pikepdf.Pdf.open(io.BytesIO(pdf))
+        else:
+            doc = pikepdf.Pdf.open(pdf)
         try:
-            return self._decrypt_payload(extracted, key)
-        except InvalidKeyError:
-            raise
-        except Exception as e:
-            raise InvalidKeyError("Invalid key or corrupted watermark") from e
+            payload_b64 = base64.b64encode(payload)
+            # 1) kommentars-stream på första sidan
+            _ = self._embed_stream_comments(doc, payload_b64, all_pages=False)
+            # 2) XMP
+            _ = self._embed_xmp(doc, payload_b64)
+            # 3) Embedded file
+            _ = self._embed_attachment(doc, payload)
+            out = io.BytesIO()
+            doc.save(out)
+            return out.getvalue()
+        finally:
+            doc.close()
 
-    # ====== Kryptering / payload ======
-    def _derive_key(self, key_material: str) -> bytes:
-        return hashlib.sha256(key_material.encode("utf-8")).digest()
+    # === Ny-stil API ===
+    def _add_watermark_newstyle(self, in_pdf=None, out_pdf=None, payload=None, *, all_pages=True, **kwargs) -> Result:
+        # --- kompatibilitet med gamla nyckelord ---
+        if in_pdf is None:
+            in_pdf = (kwargs.get("pdf") or kwargs.get("input_pdf") or
+                    kwargs.get("src") or kwargs.get("source"))
+        if out_pdf is None:
+            out_pdf = (kwargs.get("out_pdf") or kwargs.get("output_pdf") or
+                        kwargs.get("dst") or kwargs.get("dest") or kwargs.get("destination"))
+        if payload is None:
+            payload = (kwargs.get("payload") or kwargs.get("payload_bytes") or
+                        kwargs.get("data") or kwargs.get("content") or kwargs.get("watermark"))
+
+        if in_pdf is None:
+            raise WatermarkingError("Missing input PDF (use in_pdf=/pdf=/input_pdf=/src=/source=).")
+        if payload is None:
+            raise WatermarkingError("Missing payload (use payload=/payload_bytes=/data=).")
+        if out_pdf is None:
+            root, ext = os.path.splitext(str(in_pdf))
+            out_pdf = f"{root}.wm{ext or '.pdf'}"
+
+        payload_b64 = base64.b64encode(payload)
+        with pikepdf.Pdf.open(in_pdf) as pdf:
+            # 1) comment-only stream
+            pages_streamed = self._embed_stream_comments(pdf, payload_b64, all_pages)
+            # 2) XMP
+            x_ok = self._embed_xmp(pdf, payload_b64)
+            # 3) embedded file
+            a_ok = self._embed_attachment(pdf, payload)
+            pdf.save(out_pdf)
+            return Result(pages_streamed, x_ok, a_ok)
+
+    # ====== Backward-compat helpers (encryption+payload) ======
+    def _derive_key(self, key: str) -> bytes:
+        # Enkel, deterministisk 256-bit nyckel av användarnyckeln
+        return hashlib.sha256(key.encode("utf-8")).digest()
 
     def _prepare_payload(self, secret: str, key: str) -> bytes:
-        if AESGCM is None:
-            raise ModuleNotFoundError("cryptography is missing. Install with pip install cryptography.")
-
         k = self._derive_key(key)
         aes = AESGCM(k)
         iv = os.urandom(12)  # 96-bit nonce
-        ct = aes.encrypt(iv, secret.encode("utf-8"), None)  # ciphertext||tag
+        ct = aes.encrypt(iv, secret.encode("utf-8"), None)
         obj = {"data": base64.b64encode(ct).decode("ascii"),
                "iv":   base64.b64encode(iv).decode("ascii")}
-        # kompact JSON
+        # kompakt JSON
         return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
     def _decrypt_payload(self, payload_bytes: bytes, key: str) -> str:
-        if AESGCM is None:
-            raise ModuleNotFoundError("cryptography is missing. Install with pip install cryptography.")
         try:
             obj = json.loads(payload_bytes.decode("utf-8"))
             ct = base64.b64decode(obj["data"])
@@ -122,130 +168,131 @@ class PDFishAndChipsStamp(WatermarkingMethodBase):
         except Exception as e:
             raise InvalidKeyError("Invalid key or corrupted watermark") from e
 
-    # ====== PDF util ======
-    def _load_pdf_bytes(self, pdf) -> bytes:
+    # ====== Public API ======
+    def read_secret(self, pdf, key: str) -> str:
+        if not key:
+            raise ValueError("Key is required")
+
+        # 1) försök via embedded file
+        data = None
+        doc = None
         if isinstance(pdf, (bytes, bytearray)):
-            return bytes(pdf)
-        if hasattr(pdf, "read"):
-            return pdf.read()
-        if isinstance(pdf, str):
-            with open(pdf, "rb") as f:
-                return f.read()
-        raise ValueError("pdf must be bytes")
-
-    # ====== Token iterator & parity ======
-    def _iter_numbers(self, data: bytes) -> Iterator[Tuple[re.Match, int, int]]:
-        num_pat = rb'[-+]?\d+(?:\.\d+)?'
-        for m in re.finditer(num_pat, data):
-            yield m, m.start(), m.end()
-
-    def _num_get_parity(self, token: bytes) -> Optional[int]:
+            doc = pikepdf.Pdf.open(io.BytesIO(pdf))
+        else:
+            doc = pikepdf.Pdf.open(pdf)
         try:
-            s = token.decode("ascii", errors="strict")
-            if "." in s:
-                head, tail = s.split(".", 1)
-                if tail and tail[-1].isdigit():
-                    return int(tail[-1]) & 1
-                return int(head[-1]) & 1
-            return (int(s) % 10) & 1
-        except Exception:
-            return None
+            names = doc.Root.get("/Names")
+            if names:
+                ef = names.get("/EmbeddedFiles")
+                if ef:
+                    arr = list(ef.get("/Names", []))
+                    for i in range(0, len(arr), 2):
+                        if arr[i] == self.embedded_filename:
+                            filespec = arr[i+1]
+                            stream = filespec.get("/EF").get("/F")
+                            data = bytes(stream.read_bytes())
+                            break
+            # 2) XMP
+            if data is None:
+                try:
+                    md = doc.open_metadata()
+                    b64 = md.get(self.xmp_key)
+                    if isinstance(b64, str):
+                        data = base64.b64decode(b64.encode("ascii"))
+                except Exception:
+                    pass
+            # 3) kommentars-stream (första sidan)
+            if data is None:
+                try:
+                    page = doc.pages[0]
+                    contents = page.get("/Contents")
+                    streams = []
+                    if contents is None:
+                        streams = []
+                    else:
+                        if isinstance(contents, pikepdf.Array):
+                            streams = [s for s in contents]
+                        else:
+                            streams = [contents]
+                    tag = b"%% " + self.tag + b"|"
+                    for s in streams:
+                        bts = bytes(s.read_bytes())
+                        pos = bts.find(tag)
+                        if pos != -1:
+                            part = bts[pos+len(tag):]
+                            nl = part.find(b"\\n")
+                            b64 = part[:nl] if nl != -1 else part
+                            data = base64.b64decode(b64.strip())
+                            break
+                except Exception:
+                    pass
+        finally:
+            if doc is not None:
+                doc.close()
 
-    def _num_set_parity(self, token: bytes, want_bit: str) -> bytes:
-        want = 1 if want_bit == "1" else 0
-        try:
-            s = token.decode("ascii", errors="ignore")
-        except Exception:
-            return token
-
-        # decimal
-        if "." in s:
-            head, tail = s.split(".", 1)
-            if tail and tail[-1].isdigit():
-                d = int(tail[-1])
-                if (d & 1) != want:
-                    d = (d + 1) % 10
-                tail = tail[:-1] + str(d)
-                return (head + "." + tail).encode("ascii")
-        # integer
-        sign = ""
-        body = s
-        if body and body[0] in "+-":
-            sign, body = body[0], body[1:]
-        if not body or not body[-1].isdigit():
-            return token
-        d = int(body[-1])
-        if (d & 1) != want:
-            d = (d + 1) % 10
-        body = body[:-1] + str(d)
-        return (sign + body).encode("ascii")
-
-    # ====== Stream-embed / extract ======
-    def _embed_stream(self, pdf_bytes: bytes, payload: bytes) -> bytes:
-        header = self._MAGIC + struct.pack(">I", len(payload))
-        bits = "".join(f"{b:08b}" for b in header) + "".join(f"{b:08b}" for b in payload)
-
-        numbers = list(self._iter_numbers(pdf_bytes))
-        if len(numbers) < len(bits):
-            raise WatermarkingError(
-                f"Use a PDF with more content."
-            )
-
-        out = bytearray()
-        cursor = 0
-        for k, (_, start, end) in enumerate(numbers[:len(bits)]):
-            out += pdf_bytes[cursor:start]
-            tok = pdf_bytes[start:end]
-            want = bits[k]
-            cur = self._num_get_parity(tok)
-            new_tok = tok if (cur is not None and cur == (1 if want == "1" else 0)) else self._num_set_parity(tok, want)
-            out += new_tok
-            cursor = end
-        out += pdf_bytes[cursor:]
-        return bytes(out)
-
-    def _extract_stream(self, pdf_bytes: bytes) -> bytes:
-        numbers = list(self._iter_numbers(pdf_bytes))
-        if not numbers:
+        if data is None:
             raise SecretNotFoundError("No watermark found.")
+        return self._decrypt_payload(data, key)
 
-        # Read header-bits
-        bits = []
-        i = 0
-        while len(bits) < self._HEADER_BITS and i < len(numbers):
-            _, start, end = numbers[i]
-            b = self._num_get_parity(pdf_bytes[start:end])
-            if b is not None:
-                bits.append(str(b))
-            i += 1
-        if len(bits) < self._HEADER_BITS:
-            raise SecretNotFoundError("Incomplete header/no magic header.")
+    # ---------------- intern ----------------
+    def _embed_stream_comments(self, pdf: 'pikepdf.Pdf', payload_b64: bytes, all_pages: bool) -> int:
+        comment = b"\\n%% " + self.tag + b"|" + payload_b64 + b"\\n"
+        touched = 0
+        targets = range(len(pdf.pages)) if all_pages else [0]
+        for i in targets:
+            page = pdf.pages[i]
+            new_stream = pdf.make_stream(comment)
+            contents = page.get("/Contents")
+            if contents is None:
+                page[Name("/Contents")] = new_stream
+            else:
+                try:
+                    arr = contents
+                    if not isinstance(arr, pikepdf.Array):
+                        arr_new = pikepdf.Array([contents, new_stream])
+                        page[Name("/Contents")] = arr_new
+                    else:
+                        arr.append(new_stream)
+                except Exception:
+                    page[Name("/Contents")] = pikepdf.Array([contents, new_stream])
+            touched += 1
+        return touched
 
-        # Interpret MAGIC + length
-        header_bytes = bytearray()
-        for j in range(0, len(bits), 8):
-            header_bytes.append(int("".join(bits[j:j+8]), 2))
-        magic = bytes(header_bytes[:len(self._MAGIC)])
-        if magic != self._MAGIC:
-            raise SecretNotFoundError("Incorrect or missing magic header.")
-        length = struct.unpack(">I", bytes(header_bytes[len(self._MAGIC):len(self._MAGIC)+4]))[0]
+    def _embed_xmp(self, pdf: 'pikepdf.Pdf', payload_b64: bytes) -> bool:
+        try:
+            md = pdf.open_metadata()
+            md.register_namespace(self.xmp_namespace_uri, self.xmp_prefix)
+            md[self.xmp_key] = payload_b64.decode("ascii")
+            md.save()
+            return True
+        except Exception:
+            return False
 
-        # REad payload-bits
-        need = length * 8
-        data_bits = []
-        while len(data_bits) < need and i < len(numbers):
-            _, start, end = numbers[i]
-            b = self._num_get_parity(pdf_bytes[start:end])
-            if b is not None:
-                data_bits.append(str(b))
-            i += 1
-        if len(data_bits) < need:
-            raise SecretNotFoundError("Incorrect payload.")
+    def _embed_attachment(self, pdf: 'pikepdf.Pdf', payload: bytes) -> bool:
+        try:
+            stream = pdf.make_stream(payload)
+            stream["/Type"] = Name("/EmbeddedFile")
+            filespec = Dictionary({
+                Name("/Type"): Name("/Filespec"),
+                Name("/F"): self.embedded_filename,
+                Name("/EF"): Dictionary({Name("/F"): stream}),
+            })
+            names = pdf.Root.get("/Names", Dictionary())
+            ef = names.get("/EmbeddedFiles")
+            if not ef:
+                ef = Dictionary({Name("/Names"): pikepdf.Array([])})
+            arr = ef.get("/Names")
+            if not isinstance(arr, pikepdf.Array):
+                arr = pikepdf.Array([])
+            arr.append(self.embedded_filename)
+            arr.append(pdf.add_object(filespec))
+            ef[Name("/Names")] = arr
+            names[Name("/EmbeddedFiles")] = pdf.add_object(ef)
+            pdf.Root[Name("/Names")] = pdf.add_object(names)
+            return True
+        except Exception:
+            return False
 
-        out = bytearray()
-        for j in range(0, len(data_bits), 8):
-            out.append(int("".join(data_bits[j:j+8]), 2))
-        return bytes(out)
 
 if __name__ == "__main__":
     print("PDFishAndChipsStamp.py")

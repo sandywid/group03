@@ -26,7 +26,11 @@
 - [read-watermark](#read-watermark)
   - **POST** `/api/read-watermark/<int:document_id>`
   - **POST** `/api/read-watermark`
-- [upload-document](#upload-document) — **POST** `/api/upload-document`
+- [upload-document](#upload-document) — **POST** `/api/upload-document` #added for end of phase 1 /Sandra
+- [rmap-initiate](#rmap-initiate) — **POST** `/api/rmap-initiate` #added for end of phase 1 /Sandra
+
+
+- [rmap-get-link](#rmap-get-link) — **POST** `/api/rmap-get-link`
 
 
 
@@ -220,7 +224,7 @@ _None_
  ## list-all-versions
  
 **Path**
-`GET /api/list-versions`
+`GET /api/list-all-versions`
 
 **Description**  
 This endpoint lists all versions of all PDF documents for the authenticated user stored in the system.
@@ -397,5 +401,104 @@ This endpoint reads information contain in a pdf document's watermark with the p
 }
 ```
 
+**Specification** #added this for end of phase 1 update / Sandra 
+* Only the owner of a document should be able to create watermarked versions of their documents
+ * The document owner MUST be able to list all versions of their documents and their intended recipients
+
+
+ ## rmap-initiate
+**Description**  
+
+This endpoint receives GPG encrypted messages conforming to RMAP message 1.
+
+**Path**
+`POST /api/rmap-initiate`
+
+**Parameters**
+
+```json
+{
+    "payload": <ASCII_armored_base64>
+}
+```
+
+should decrypt to:
+
+```json
+{
+    "nonceClient": <u64>,
+
+
+    "identity": <string>
+}
+```
+
+
+
+
+**Return**
+```json
+{
+    "payload": <ASCII_armored_base64>
+}
+
+
+```
+should decrypt to:
+
+```json
+{
+   "nonceClient": <u64>,
+
+
+    "nonceServer": <u64>
+}
+```
 **Specification**
- * Only the owner of a document should 
+ * The server SHOULD only respond to known identities.
+ * All submitted group public keys MUST constitute valid identities.
+
+
+   ## rmap-get-link
+
+**Description**  
+This endpoint receives GPG encrypted messages conforming to RMAP message 2.
+
+**Path**
+`POST /api/rmap-get-link`
+
+
+**Parameters**
+```json
+{
+    "payload": <ASCII_armored_base64>
+}
+```
+
+should decrypt to:
+
+```json
+{
+    "nonceServer": <u64>
+}
+```
+
+**Return**
+
+```json
+{
+    "payload": <ASCII_armored_base64>
+}
+```
+
+should decrypt to:
+
+```json
+{
+    "result":"<32-hex NonceClient||NonceServer>"
+}
+```
+
+**Specification**
+
+ * `get-version/<result>` SHOULD point to a watermarked version of a PDF specific to the group authenticated by the public key of the client.
