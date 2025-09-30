@@ -42,7 +42,7 @@ def _db_url_from_cfg(cfg) -> str:
     )
 
 def get_engine():
-    app = current_app  # använder den aktiva Flask-appen
+    app = current_app  # använder den aktiva Flask-appen /Sandra
     eng = app.config.get("_ENGINE")
     if eng is None:
         eng = create_engine(_db_url_from_cfg(app.config), pool_pre_ping=True, future=True)
@@ -63,7 +63,7 @@ rmap = None # /Sandra
 
 import watermarking_utils as WMUtils
 from watermarking_method import WatermarkingMethod
-#from watermarking_utils import METHODS, apply_watermark, read_watermark, explore_pdf, is_watermarking_applicable, get_method
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -75,12 +75,12 @@ SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
 # Filer/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "Group_3.pdf"   # <-- se till att denna finns i static/
+BASE_PDF = STATIC_DIR / "Group_3.pdf"   
 
 SERVER_PRIV_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
 
+#for end of phase one update / Sdra
 def init_rmap():
-    """Initiera RMAP med rätt nyckelvägar."""
     id_manager = IdentityManager(
         CLIENT_KEYS_DIR,  # klienters publika nycklar (clients/*.asc)
         SERVER_PUB,       # serverns publika nyckel
