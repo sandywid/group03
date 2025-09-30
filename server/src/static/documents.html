@@ -169,8 +169,10 @@
     // Upload
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const form = e.currentTarget;      // changed so the error message is gone, it saves a reference to the form before the first await and use that reference /Sandra
       statusEl.textContent = 'Uploading…';
-      const fd = new FormData(e.currentTarget);
+
+      const fd = new FormData(form);
       try {
         const resp = await apiFetch('/api/upload-document', { method: 'POST', body: fd });
         if (!resp.ok) {
@@ -178,7 +180,7 @@
           throw new Error(err.message || resp.statusText);
         }
         statusEl.textContent = 'Uploaded successfully';
-        e.currentTarget.reset();
+        form.reset();                     // changed so the error message is gone /Sandra
         await loadDocuments();
       } catch (err) {
         statusEl.textContent = 'Upload failed: ' + err.message;
@@ -186,6 +188,7 @@
         setTimeout(()=> statusEl.textContent = '', 3000);
       }
     });
+
 
     // Table button actions
     document.getElementById('docsTable').addEventListener('click', async (e) => {
