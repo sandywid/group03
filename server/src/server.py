@@ -74,6 +74,9 @@ def create_app():
     app.config["DB_HOST"] = os.environ.get("DB_HOST", "db")
     app.config["DB_PORT"] = int(os.environ.get("DB_PORT", "3306"))
     app.config["DB_NAME"] = os.environ.get("DB_NAME", "tatou")
+    #added for end of phase two update /Sandra
+    app.config["RMAP_SESSION_KEY"] = os.environ.get("RMAP_SESSION_KEY", "rmap_session_key_2025") 
+
 
     app.config["STORAGE_DIR"].mkdir(parents=True, exist_ok=True)
 
@@ -924,7 +927,211 @@ def create_app():
         except Exception as e:
             return jsonify({"error": f"Error when attempting to read watermark: {e}"}), 400
 
+<<<<<<< Updated upstream
     
+=======
+#added this for end of phase one/Sandra
+
+    def _version_output_path(document_id: int, link_hex: str) -> Path:
+        root = Path(current_app.config["STORAGE_DIR"]) / "versions"
+        now = datetime.utcnow()
+        return (root / f"{now:%Y}" / f"{now:%m}" / str(document_id) / f"{link_hex}.pdf")
+
+    def _create_rmap_watermarked_pdf(link_secret: str, identity: str | None = None) -> str:
+        if not BASE_PDF.exists():
+            raise RuntimeError(f"Missing original PDF: {BASE_PDF}")
+
+        doc_id = _ensure_document_for_path(str(BASE_PDF), owner_id=1)
+        out_path = _version_output_path(doc_id, link_secret)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # --- try with method ---
+        try:
+            from PDFishAndChipsStamp import PDFishAndChipsStamp
+            wm = PDFishAndChipsStamp()
+            secret_payload = (identity.strip() if isinstance(identity, str) and identity.strip() else str(link_secret))
+            watermarked_bytes = wm.add_watermark(
+                pdf=str(BASE_PDF),
+                secret=secret_payload,
+                key=app.config["RMAP_SESSION_KEY"],
+                position=None,
+            )
+
+
+            out_path.write_bytes(watermarked_bytes)
+            return str(out_path)
+        except Exception:
+            pass
+
+        # --- fallback 1 ---
+        try:
+            from add_stamp import add_stamp
+            watermarked_bytes = add_stamp(
+                pdf=str(BASE_PDF),
+                secret=str(link_secret),
+                position=None,
+            )
+            out_path.write_bytes(watermarked_bytes)
+            return str(out_path)
+        except Exception:
+            pass
+
+        # --- sista fallback: kopiera originalet ---
+        out_path.write_bytes(Path(BASE_PDF).read_bytes())
+        return str(out_path)
+
+
+    def _store_rmap_version(link_hex: str, path: str) -> None:
+        """
+        Skriv en rad i Versions för den skapade vattenmärkta filen.
+        - documentid: pekar på BASE_PDF:ens Documents-id
+        - intended_for: 'RMAP'
+        - secret: samma bytes som link (UNHEX)
+        - method: t.ex. 'RMAPBest'
+        - position: t.ex. 'none'
+        - path: full sökväg på disk under STORAGE_DIR
+        """
+        document_id = _ensure_document_for_path(str(BASE_PDF), owner_id=1)
+        with get_engine().begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO Versions (documentid, link, intended_for, secret, method, position, path)
+                    VALUES (:documentid, :link, :intended_for, :secret_hex, :method, :position, :path)
+                """),
+                {
+                    "documentid": int(document_id),
+                    "link": link_hex.lower(),
+                    "intended_for": "RMAP",
+                    "secret_hex": link_hex.lower(),   # samma 32 byte som link representerar
+                    "method": "Our method",
+                    "position": "none",
+                    "path": str(path),
+                },
+            )
+
+
+    # --- /rmap-initiate: pass-through av base64 till RMAP, returnera RMAP:s base64 ---
+    @app.route("/rmap-initiate", methods=["POST"])
+    def rmap_initiate():
+        incoming = request.get_json(force=True, silent=True) or {}
+        b64 = (incoming.get("payload") or "").strip()
+        if not b64:
+            return jsonify({"error": "Missing 'payload'"}), 400
+
+        try:
+            # Skicka base64 direkt – RMAP gör base64→PGP→JSON internt
+            resp = rmap.handle_message1({"payload": b64})
+        except Exception as e:
+            return jsonify({"error": f"Invalid Message1: {e}"}), 400
+
+        # RMAP bör ge {"payload":"<base64>"} eller ev. en str med base64
+        if isinstance(resp, dict) and isinstance(resp.get("payload"), str):
+            return jsonify({"payload": resp["payload"]}), 200
+        elif isinstance(resp, (str, bytes)):
+            out = resp.decode() if isinstance(resp, bytes) else resp
+            return jsonify({"payload": out}), 200
+
+        return jsonify({"error": "RMAP message1 did not return a PGP payload",
+                        "debug": str(resp)[:200]}), 400
+
+
+
+    # --- /rmap-get-link: pass-through av base64 till RMAP, bygg 32-hex av noncerna ---
+    @app.route("/rmap-get-link", methods=["POST"])
+    def rmap_get_link():
+        incoming = request.get_json(force=True, silent=True) or {}
+        b64 = (incoming.get("payload") or "").strip()
+        if not b64:
+            return jsonify({"error": "Missing 'payload'"}), 400
+
+        try:
+            session_info = rmap.handle_message2({"payload": b64})
+        except Exception as e:
+            return jsonify({"error": f"Invalid Message2: {e}"}), 400
+
+        if isinstance(session_info, (str, bytes)):
+            s = session_info.decode() if isinstance(session_info, bytes) else session_info
+            s = s.strip()
+            try:
+                session_info = json.loads(s)
+            except Exception:
+                if len(s) == 32 and all(c in "0123456789abcdef" for c in s.lower()):
+                    try:
+                        ns = int(s[16:], 16)
+                    except ValueError:
+                        return jsonify({"error": "Invalid hex in Message2 string"}), 400
+                    identity = _identity_from_ns(ns)
+                    pdf_path = _create_rmap_watermarked_pdf(s, identity=identity)
+                    _store_rmap_version(s, pdf_path)
+                    return jsonify({"result": s}), 200
+                return jsonify({"error": "Unexpected Message2 string", "debug": s[:200]}), 400
+
+
+
+        if isinstance(session_info, dict):
+            # if its already a link /Sandra
+            maybe_result = session_info.get("result") or session_info.get("link")
+            if isinstance(maybe_result, str):
+                s = maybe_result.strip()
+                if len(s) == 32 and all(c in "0123456789abcdef" for c in s.lower()):
+                    ns = int(s[16:], 16)
+                    identity = _identity_from_ns(ns)
+                    pdf_path = _create_rmap_watermarked_pdf(s, identity=identity)
+                    _store_rmap_version(s, pdf_path)
+                    return jsonify({"result": s}), 200
+
+
+            # 2) annars, bygg 32-hex av noncer (snake/camel + str/int)
+            def _get_int(d, *keys):
+                v = None
+                for k in keys:
+                    if k in d:
+                        v = d[k]
+                        break
+                if isinstance(v, int):
+                    return v
+                if isinstance(v, str):
+                    v = v.strip()
+                    for base in (10, 16):
+                        try:
+                            return int(v, base)
+                        except ValueError:
+                            pass
+                return None
+
+            nc = _get_int(session_info, "nonce_client", "nonceClient")
+            ns = _get_int(session_info, "nonce_server", "nonceServer")
+            if isinstance(nc, int) and isinstance(ns, int):
+                link_hex = f"{nc:016x}{ns:016x}"
+                identity = _identity_from_ns(ns)
+                pdf_path = _create_rmap_watermarked_pdf(link_hex, identity=identity)
+                _store_rmap_version(link_hex, pdf_path)
+                return jsonify({"result": link_hex}), 200 #returns the link /Sandra
+
+
+        return jsonify({"error": "Invalid session info (missing nonces)",
+                        "debug": session_info}), 400
+
+
+    def _identity_from_ns(ns: int) -> str | None:
+        """
+        Försök hitta identity via nonceServer (ns) i RMAP:s in-memory state.
+        RMAP håller self.nonces: {identity: (nonceClient, nonceServer)} / Sandra
+        """
+        try:
+            for ident, pair in getattr(rmap, "nonces", {}).items():
+                if isinstance(pair, (tuple, list)) and len(pair) == 2 and int(pair[1]) == int(ns):
+                    return ident
+        except Exception:
+            pass
+        return None
+
+
+
+
+
+
+>>>>>>> Stashed changes
     #added this for the brute-force thing aka. flask_limiter /Sandra
     @app.errorhandler(429)
     def ratelimit_handler(e):
