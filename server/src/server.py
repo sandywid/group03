@@ -357,9 +357,9 @@ def create_app():
 
         ts = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
         final_name = (request.form.get("name") or Path(fname).stem).strip()
-        if not re.fullmatch(r"[A-Za-zÅÄÖåäö]+", final_name):
+        if not re.fullmatch(r"[A-Za-zÅÄÖåäö0-9]+", final_name):
             return jsonify({
-                "error": "The name can only contain letters (A–Z, a–z, ÅÄÖ, åäö) – no numbers or special characters."
+                "error": "The name can only contain letters (A–Z, a–z, ÅÄÖ, åäö) – and numbers (0-9) - no special characters."
             }), 400
         stored_name = f"{ts}__{fname}"
         stored_path = user_dir / stored_name
