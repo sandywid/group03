@@ -1,0 +1,31 @@
+# tests/conftest.py
+import os, time, requests, pytest
+from server import create_app
+
+@pytest.fixture(scope="session")
+def app():
+    app = create_app()
+    app.config.update(TESTING=True)
+    return app
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+@pytest.fixture(scope="session")
+def base_url():
+    return os.getenv("BASE_URL", "http://localhost:5050")
+
+@pytest.fixture(scope="session", autouse=True)
+def wait_for_service(base_url):
+    deadline = time.time() + 60  # vänta max 60s
+    while time.time() < deadline:
+        try:
+            r = requests.get(base_url, timeout=1)
+            if r.status_code < 500:
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    pytest.fail(f"Tjänsten svarade inte på {base_url} inom 60s")
+
