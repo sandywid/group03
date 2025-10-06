@@ -10,6 +10,7 @@ services:
     volumes:
       - user-files:/app/storage
       - ./server/src/keys:/app/src/keys:ro #added this one for the keys/Sandra
+      - ./logs:/var/log/app #added this for logs /Sandra
     environment:
       - PYTHONUNBUFFERED=1
       # DB connection details for future use by the API
@@ -20,6 +21,7 @@ services:
       - DB_PASSWORD=${MARIADB_PASSWORD}
       - SECRET_KEY=${SECRET_KEY} #Added this here too/Sandra
       - SERVER_PRIV_PASSPHRASE=${SERVER_PRIV_PASSPHRASE} #added this for key to out secrey key/Sandra
+      - LOG_PATH=/var/log/app/app.log #added this for logs /Sandra
     depends_on:
       db:
         condition: service_healthy
