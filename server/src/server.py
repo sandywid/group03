@@ -16,6 +16,34 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+#added for loggning /Sandra
+from flag_detection import detect_flag_attempt
+import logging, sys, json
+try:
+    from pythonjsonlogger import jsonlogger
+    formatter = jsonlogger.JsonFormatter()
+except Exception:
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+
+log_path = os.getenv("LOG_PATH", "/var/log/app/app.log")
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# --- 1. Logga till stdout (syns i docker logs) /Sandra
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+root_logger.addHandler(stream_handler)
+
+# --- 2. Logga till fil (syns i group03/logs/app.log) /Sandra
+file_handler = logging.FileHandler(log_path)
+file_handler.setFormatter(formatter)
+root_logger.addHandler(file_handler)
+
+# Testlogg vid uppstart /Sandra
+logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
+
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -160,6 +188,34 @@ def create_app():
     if rmap is None:
         rmap = init_rmap()
 
+#Added for logs /Sandra 
+    # enkel JSON-logger till stdout (docker log driver fångar detta)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(jsonlogger.JsonFormatter())
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    
+    # se även till att logger "app.flag_detector" använder root
+    @app.before_request
+    def before():
+        detect_flag_attempt()
+
+    @app.after_request
+    def after(response):
+        # Om flag_attempt: du kan välja blockera tidigt eller låta request gå vidare men logga
+        if getattr(g, "flag_attempt", False):
+            # ex: sätt header så att klient får generisk 403 (valfritt)
+            response.status_code = 403
+            response.set_data("Forbidden")
+            # Optionellt: skriv en extra loggrad med respons
+            logging.getLogger("app.flag_detector").warning({
+                "event": "flag_attempt_blocked",
+                "request_id": g.request_id,
+                "client_ip": g.flag_attempt_event["client_ip"]
+            })
+        return response
+
 
 #added this to prevent eg. brute-force - baseline for the whole app/Sandra
     limiter = Limiter(
@@ -168,21 +224,21 @@ def create_app():
         default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
     )
 
-# key function: per log-in, if not logged-in its per IP/Sandra
+    # key function: per log-in, if not logged-in its per IP/Sandra
     def user_or_ip():
         try:
             return f"user:{int(g.user['id'])}"
         except Exception:
             return f"ip:{get_remote_address()}"
 
-#key for each account at log-in (fallback to IP)/Sandra
+    #key for each account at log-in (fallback to IP)/Sandra
     def login_key():
         body = request.get_json(silent=True) or {}
         login = (body.get("login") or body.get("email") or "").strip().lower()
         return f"acct:{login}" if login else f"ip:{get_remote_address()}"
 
 
- #shared limit for upload (per user/IP)/Sandra
+    #shared limit for upload (per user/IP)/Sandra
     upload_limit = limiter.shared_limit(
         "2 per minute; 20 per hour",
         scope="upload",
@@ -1059,7 +1115,7 @@ def create_app():
             watermarked_bytes = wm.add_watermark(
                 pdf=str(BASE_PDF),
                 secret=secret_payload,
-                key="rmap_session_key_2025",
+                key="rmap_session_key_2025", #I know it should not be here but i got too angry cause it dit not work to move it :) /Sandra
                 position=None,
             )
 
