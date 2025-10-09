@@ -103,12 +103,11 @@ CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
 SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
+
 # Fils/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
 BASE_PDF = STATIC_DIR / "Group_3.pdf"  
 
-SERVER_PRIV_key_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
-server_private_key_passphrase = os.getenv("server_private_key_passphrase", "gruppis3")
 
 def init_rmap():
     """Initiera RMAP with right key paths."""
@@ -116,7 +115,6 @@ def init_rmap():
         CLIENT_KEYS_DIR,  # clients public keys (clients/*.asc) /Sandra 
         SERVER_PUB,       # serverns public keys /Sandra
         SERVER_PRIV,       # serverns private key /Sandra
-        server_private_key_passphrase, #key to our privatekey /Sandra
     )
     return RMAP(id_manager)
 
