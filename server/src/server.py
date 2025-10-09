@@ -326,7 +326,7 @@ def create_app():
             db_ok = False
         return jsonify({"message": "The server is up and running.", "db_connected": db_ok}), 200
 
-    # POST /api/create-user {email, login, password}
+    # POST /api/create-user {username,email, login, password}
     @app.post("/api/create-user")
     def create_user():
         payload = request.get_json(silent=True) or {}
