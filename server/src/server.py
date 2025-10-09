@@ -327,31 +327,59 @@ def create_app():
             db_ok = False
         return jsonify({"message": "The server is up and running.", "db_connected": db_ok}), 200
 
-    # POST /api/create-user {email, login, password}
+    # POST /api/create-user {username,email, login, password}
     @app.post("/api/create-user")
     def create_user():
         payload = request.get_json(silent=True) or {}
         email = (payload.get("email") or "").strip().lower()
         login = (payload.get("login") or "").strip()
         password = payload.get("password") or ""
+    
+    # Input validation
         if not email or not login or not password:
             return jsonify({"error": "email, login, and password are required"}), 400
+    
+    # Add username format validation
+        if not re.match(r'^[a-zA-Z0-9_-]{3,64}$', login):
+            return jsonify({
+            "error": "Username must be 3-64 characters long and contain only letters, numbers, hyphens, and underscores"
+        }), 400
 
         hpw = generate_password_hash(password)
 
         try:
             with get_engine().begin() as conn:
+            # Check if username or email already exists for better error messages
+                existing = conn.execute(
+                    text("SELECT login, email FROM Users WHERE login = :login OR email = :email"),
+                    {"login": login, "email": email}
+            ).first()
+            
+                if existing:
+                    if existing.login == login:
+                        return jsonify({"error": "Username already taken"}), 409
+                    if existing.email == email:
+                        return jsonify({"error": "Email already registered"}), 409
+            
+            # Insert the new user
                 res = conn.execute(
                     text("INSERT INTO Users (email, hpassword, login) VALUES (:email, :hpw, :login)"),
                     {"email": email, "hpw": hpw, "login": login},
-                )
+            )
                 uid = int(res.lastrowid)
                 row = conn.execute(
                     text("SELECT id, email, login FROM Users WHERE id = :id"),
-                    {"id": uid},
-                ).one()
-        except IntegrityError:
-            return jsonify({"error": "email or login already exists"}), 409
+                {"id": uid},
+            ).one()
+        except IntegrityError as e:
+        # More specific error messages
+            error_str = str(e.orig).lower() if hasattr(e, 'orig') else str(e).lower()
+            if 'uq_users_login' in error_str or 'login' in error_str:
+                return jsonify({"error": "Username already taken"}), 409
+            elif 'uq_users_email' in error_str or 'email' in error_str:
+                return jsonify({"error": "Email already registered"}), 409
+            else:
+                return jsonify({"error": "Account could not be created (duplicate data)"}), 409
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
