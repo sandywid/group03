@@ -31,17 +31,17 @@ os.makedirs(os.path.dirname(log_path), exist_ok=True)
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 
-# --- 1. Logga till stdout (syns i docker logs) /Sandra
+# --- 1. Log to stdout (can be seen in docker logs) /Sandra
 stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(formatter)
 root_logger.addHandler(stream_handler)
 
-# --- 2. Logga till fil (syns i group03/logs/app.log) /Sandra
+# --- 2. Log to file (can be seen in group03/logs/app.log) /Sandra
 file_handler = logging.FileHandler(log_path)
 file_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 
-# Testlogg vid uppstart /Sandra
+# Testlog when starting /Sandra
 logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
 
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
@@ -63,21 +63,23 @@ from flask import current_app
 from sqlalchemy import text, create_engine
 from datetime import datetime
 
+# end of phase one / Sandra
 def _db_url_from_cfg(cfg) -> str:
     return (
         f"mysql+pymysql://{cfg['DB_USER']}:{cfg['DB_PASSWORD']}"
         f"@{cfg['DB_HOST']}:{cfg['DB_PORT']}/{cfg['DB_NAME']}?charset=utf8mb4"
     )
 
+# end of phase one / Sandra
 def get_engine():
-    app = current_app  # använder den aktiva Flask-appen
+    app = current_app  # using the active Flask-app /Sandra
     eng = app.config.get("_ENGINE")
     if eng is None:
         eng = create_engine(_db_url_from_cfg(app.config), pool_pre_ping=True, future=True)
         app.config["_ENGINE"] = eng
     return eng
 
-
+# end of phase one / Sandra
 from rmap.identity_manager import IdentityManager
 from rmap.rmap import RMAP
 
@@ -95,25 +97,26 @@ from watermarking_method import WatermarkingMethod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Keys /Sandra
+# Keys for end of phase one/Sandra
 KEYS_DIR = os.path.join(BASE_DIR, "keys")
 CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
 SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
-# Filer/PDF /Sandra
+# Fils/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "Group_3.pdf"   # <-- se till att denna finns i static/
+BASE_PDF = STATIC_DIR / "Group_3.pdf"  
 
-SERVER_PRIV_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
+SERVER_PRIV_key_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
+server_private_key_passphrase = os.getenv("server_private_key_passphrase", "gruppis3")
 
 def init_rmap():
-    """Initiera RMAP med rätt nyckelvägar."""
+    """Initiera RMAP with right key paths."""
     id_manager = IdentityManager(
-        CLIENT_KEYS_DIR,  # klienters publika nycklar (clients/*.asc)
-        SERVER_PUB,       # serverns publika nyckel
-        SERVER_PRIV,       # serverns privata nyckel
-        SERVER_PRIV_PASSPHRASE #key to our privatekey
+        CLIENT_KEYS_DIR,  # clients public keys (clients/*.asc) /Sandra 
+        SERVER_PUB,       # serverns public keys /Sandra
+        SERVER_PRIV,       # serverns private key /Sandra
+        server_private_key_passphrase, #key to our privatekey /Sandra
     )
     return RMAP(id_manager)
 
@@ -203,11 +206,11 @@ def create_app():
 
     @app.after_request
     def after(response):
-        # Om flag_attempt: du kan välja blockera tidigt eller låta request gå vidare men logga
+        # Om flag_attempt: vi kan välja blockera tidigt eller låta request gå vidare men logga
         if getattr(g, "flag_attempt", False):
             # ex: sätt header så att klient får generisk 403 (valfritt)
             response.status_code = 403
-            response.set_data("Forbidden")
+            response.set_data("Don't steal our flag man")
             # Optionellt: skriv en extra loggrad med respons
             logging.getLogger("app.flag_detector").warning({
                 "event": "flag_attempt_blocked",

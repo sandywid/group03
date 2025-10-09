@@ -4,7 +4,7 @@ import os, json
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 SALT = "tatou-auth"  # måste matcha din servers _serializer() salt
-NUM = 10  # antal tokens att generera
+NUM = 20  # antal tokens att generera
 
 s = URLSafeTimedSerializer(SECRET_KEY, salt=SALT)
 
