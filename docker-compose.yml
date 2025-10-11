@@ -43,7 +43,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     restart: unless-stopped
 
   phpmyadmin:
@@ -54,7 +54,7 @@ services:
       - UPLOAD_LIMIT=64M     # <-- use a unit and quote if using YAML key:value form
       - MEMORY_LIMIT=256M
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       db:
         condition: service_healthy
