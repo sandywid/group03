@@ -89,7 +89,7 @@ try:
 except Exception:  # dill is optional
     _pickle = _std_pickle
 
-rmap = None # /Sandra
+rmap = None 
 
 import watermarking_utils as WMUtils
 from watermarking_method import WatermarkingMethod
