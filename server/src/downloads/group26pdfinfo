@@ -1,0 +1,25 @@
+(.venv) lab@softsec21-lnx:~/group03/server/src$ rmap-client --client-priv keys/server_priv.asc --identity Group_03 --server-pub keys/clients/Group_26.asc --server 10.11.12.12
+⇒ Loading keys
+✓ Keys loaded
+• nonceClient = 8323283286709099831
+⇒ Sending Message 1 (/api/rmap-initiate)
+⇒ Message 1: trying format 'armor_body'
+! server error on /api/rmap-initiate with 'armor_body': Payload is not valid Base64: Only base64 data is allowed
+⇒ Message 1: trying format 'armored_b64'
+✓ Message 1: server accepted format 'armored_b64'
+• Response 1 (decrypted or plaintext):
+{
+  "nonceClient": 8323283286709099831,
+  "nonceServer": 4599331169067985519
+}
+⇒ Sending Message 2 (/api/rmap-get-link)
+⇒ Message 2: trying format 'armored_b64'
+• Response 2 (decrypted or plaintext):
+{
+  "result": "73823e0cf53ddd373fd41b5478adea6f"
+}
+✓ Received secret link token: 73823e0cf53ddd373fd41b5478adea6f
+⇒ Downloading PDF via /api/get-version/73823e0cf53ddd373fd41b5478adea6f
+✓ Saved file: /home/lab/group03/server/src/downloads/Group_03_73823e0c.pdf
+
+✓ RMAP client run finished successfully.

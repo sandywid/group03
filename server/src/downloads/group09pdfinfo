@@ -1,0 +1,26 @@
+(.venv) lab@softsec21-lnx:~/group03/server/src$ rmap-client --client-priv keys/server_priv.asc --identity Group_03 --server-pub keys/clients/Group_09.asc --server 10.11.12.10
+⇒ Loading keys
+✓ Keys loaded
+• nonceClient = 4506628245757041300
+⇒ Sending Message 1 (/api/rmap-initiate)
+⇒ Message 1: trying format 'armor_body'
+! server error on /api/rmap-initiate with 'armor_body': Internal server error
+⇒ Message 1: trying format 'armored_b64'
+✓ Message 1: server accepted format 'armored_b64'
+• Response 1 (decrypted or plaintext):
+{
+  "nonceClient": 4506628245757041300,
+  "nonceServer": 14145781815279821070
+}
+⇒ Sending Message 2 (/api/rmap-get-link)
+⇒ Message 2: trying format 'armored_b64'
+• Response 2 (decrypted or plaintext):
+{
+  "result": "3e8ac2832b171a94c44fe99d09ef210e"
+}
+✓ Received secret link token: 3e8ac2832b171a94c44fe99d09ef210e
+⇒ Downloading PDF via /api/get-version/3e8ac2832b171a94c44fe99d09ef210e
+✓ Saved file: /home/lab/group03/server/src/downloads/Group_03_3e8ac283.pdf
+
+✓ RMAP client run finished successfully.
+
