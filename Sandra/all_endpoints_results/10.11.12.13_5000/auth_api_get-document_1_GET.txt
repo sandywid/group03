@@ -1,0 +1,9 @@
+---- auth_api_get-document_1_GET ----
+HTTP/1.1 404 NOT FOUND
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:49 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 31
+
+{"error":"document not found"}

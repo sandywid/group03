@@ -1,0 +1,9 @@
+---- get_api_get-watermarking-methods ----
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:48 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 423
+
+{"count":4,"methods":[{"description":"Toy method that appends a watermark record after the PDF EOF. Position is ignored.","name":"toy-eof"},{"description":"Please enter your secret and key","name":"PDFishAndChipsStamp"},{"description":"Enter key & secret; position ignored.","name":"LiteralCharParityStamp"},{"description":"Simple watermarking by appending data after PDF EOF. Requires key and secret.","name":"FatinWM"}]}

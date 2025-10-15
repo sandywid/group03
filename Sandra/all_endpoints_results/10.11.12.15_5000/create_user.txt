@@ -1,0 +1,9 @@
+---- create_user ----
+HTTP/1.1 201 CREATED
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:49:09 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 81
+
+{"email":"testuser1760521749@example.local","id":1,"login":"testuser1760521749"}

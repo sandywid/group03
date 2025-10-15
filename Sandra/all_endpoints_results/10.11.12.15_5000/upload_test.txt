@@ -1,0 +1,9 @@
+---- upload_test ----
+HTTP/1.1 201 CREATED
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:49:10 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 153
+
+{"creation":"2025-10-15T09:49:10.100286","id":1,"name":"test.pdf","sha256":"CD3E6EBA9357AC744E60ACF05102C646F6F3FA3ADC56C18487C8A0E1B6A134ED","size":21}
