@@ -1,8 +1,25 @@
 # server/test/conftest.py
+import os, pathlib
 import io
 import random
 import string
 import pytest
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(pathlib.Path(__file__).resolve().parents[2] / ".env", override=False)
+except Exception:
+    pass
+
+# default DB_* if missing, and map MARIADB_* => DB_*
+os.environ.setdefault("DB_HOST", "127.0.0.1")
+os.environ.setdefault("DB_PORT", "3306")
+os.environ.setdefault("DB_NAME", "tatou")
+if "DB_USER" not in os.environ and "MARIADB_USER" in os.environ:
+    os.environ["DB_USER"] = os.environ["MARIADB_USER"]
+if "DB_PASSWORD" not in os.environ and "MARIADB_PASSWORD" in os.environ:
+    os.environ["DB_PASSWORD"] = os.environ["MARIADB_PASSWORD"]
+
 from server import app
 
 # ---------- Helpers ----------
