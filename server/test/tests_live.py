@@ -9,7 +9,7 @@ import pytest
 from werkzeug.serving import make_server
 from server import create_app
 
-# --- 1) Flask testklient (ingen nätverkstrafik) ---
+# --- 1) Flask testklient (no network traffic) ---
 @pytest.fixture
 def client():
     app = create_app()                 # inga args
@@ -17,7 +17,7 @@ def client():
     with app.test_client() as c:
         yield c
 
-# --- 2) Live server (offline som default, BASE_URL om satt) ---
+# --- 2) Live server (offline as default, BASE_URL if set) ---
 @pytest.fixture(scope="session")
 def live_server():
     env_url = os.getenv("BASE_URL")
@@ -30,8 +30,8 @@ def live_server():
     port = int(os.getenv("TEST_PORT", "5001"))
     url = f"http://{host}:{port}"
 
-    app = create_app()                 # inga args
-    app.config.update(TESTING=True)    # säkra testläge
+    app = create_app()                 # no args
+    app.config.update(TESTING=True)    # secure test mode
 
     server = make_server(host, port, app)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -52,12 +52,12 @@ def live_server():
             server.shutdown()
         thread.join(timeout=5)
 
-# --- 3) Bas-URL som HTTP-tester använder ---
+# --- 3) Bas-URL as HTTP-tester use ---
 @pytest.fixture(scope="session")
 def base_url(live_server):
     return live_server
 
-# --- Hjälpare ---
+# --- Helper ---
 def _wait_until_up(url: str, timeout_s: int = 60):
     deadline = time.time() + timeout_s
     health = url.rstrip("/") + "/healthz"

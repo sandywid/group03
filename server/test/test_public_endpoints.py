@@ -7,8 +7,8 @@ def test_healthz_json_and_200():
     assert r.status_code == 200
     data = r.get_json()
     assert isinstance(data, dict)
-    assert "message" in data  # servern har detta fält enligt er kod
-    assert "db_connected" in data  # används för att gate:a integrations-tester
+    assert "message" in data  
+    assert "db_connected" in data 
 
 def test_get_watermarking_methods_shape():
     c = app.test_client()
@@ -17,6 +17,6 @@ def test_get_watermarking_methods_shape():
     js = r.get_json()
     assert "methods" in js and "count" in js
     assert js["count"] == len(js["methods"])
-    # varje metod ska ha name + description (från WM-registret)
+   
     for m in js["methods"]:
         assert "name" in m and "description" in m
