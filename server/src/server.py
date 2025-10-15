@@ -1117,6 +1117,7 @@ def create_app():
 
 
     # --- /rmap-initiate: pass-through av base64 till RMAP, returnera RMAP:s base64 ---
+    @app.route("/api/rmap-initiate", methods=["POST"])
     @app.route("/rmap-initiate", methods=["POST"])
     def rmap_initiate():
         incoming = request.get_json(force=True, silent=True) or {}
@@ -1143,6 +1144,7 @@ def create_app():
 
 
     # --- /rmap-get-link: pass-through av base64 till RMAP, bygg 32-hex av noncerna ---
+    @app.route("/api/rmap-get-link", methods=["POST"])
     @app.route("/rmap-get-link", methods=["POST"])
     def rmap_get_link():
         incoming = request.get_json(force=True, silent=True) or {}

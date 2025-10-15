@@ -30,9 +30,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends gnupg \
  && rm -rf /var/lib/apt/lists/*
 
-#added this for my watermark nr2
+#added this for my watermark nr2 /Sandra
 RUN apt-get update && apt-get install -y qpdf && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir pikepdf
+
+#added for the new update/Sandra
+RUN pip install requests
+
 
 
 # Default command runs the web server
