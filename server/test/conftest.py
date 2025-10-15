@@ -12,7 +12,7 @@ def _rand(n=6):
 # ---------- Test mode (disable rate limiting) ----------
 @pytest.fixture(scope="session", autouse=True)
 def configure_app_for_tests():
-    # OBS: Flask-Limiter kan redan vara initierad; config minskar ändå brus i loggar
+   
     app.config.update(
         TESTING=True,
         RATELIMIT_ENABLED=False,
@@ -22,7 +22,7 @@ def configure_app_for_tests():
 # ---------- DB must be up ----------
 @pytest.fixture(scope="session", autouse=True)
 def db_available():
-    c = app.test_client()  # egen klient för att undvika scope-krockar
+    c = app.test_client()  # own client to avoid scope-clashes
     js = (c.get("/healthz").get_json() or {})
     assert js.get("db_connected") is True, (
         "DB is not connected according to /healthz. "
@@ -39,7 +39,7 @@ def client():
 @pytest.fixture(scope="session")
 def auth_token(db_available):
     c = app.test_client()
-    # skapa EN stabil test-user för hela sessionen
+    # creates one sable test user per testrun
     import random, string
     suf = ''.join(random.choice(string.ascii_lowercase) for _ in range(6))
     email = f"{suf}@example.test"
@@ -54,14 +54,12 @@ def auth_headers(auth_token):
     return {"Authorization": f"Bearer {auth_token}"}
 
 # ---------- Test data ----------
-
-# --- Testdata ---
 @pytest.fixture
 def tiny_valid_pdf_bytes():
-    # Minimal giltig PDF-header
+    # minimal valid PDF
     return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
 
-# EN uppladdning per testrunda, med SAMMA user som auth_headers
+# ONE upload for each test run, with THE SAME user as auth_headers
 @pytest.fixture(scope="session")
 def upload_sample_pdf(auth_headers):
     c = app.test_client()

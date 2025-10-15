@@ -29,9 +29,9 @@ def doc_user1(client, token_pair, tiny_valid_pdf_bytes):
 
 def test_owner_isolation_for_get_and_delete(client, token_pair, doc_user1):
     t1, t2 = token_pair
-    # user2 får INTE se user1:s dokument
+    # user2 is NOT allowed to ses user1:s document
     r = client.get(f"/api/get-document/{doc_user1}", headers={"Authorization": f"Bearer {t2}"})
-    assert r.status_code == 404  # servern döljer existensen
-    # user2 får inte radera
+    assert r.status_code == 404  # servern hides the existense
+    # user2 is not allowed to delete user1:s document
     r = client.delete(f"/api/delete-document/{doc_user1}", headers={"Authorization": f"Bearer {t2}"})
     assert r.status_code == 404
