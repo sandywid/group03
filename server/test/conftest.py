@@ -1,72 +1,76 @@
 # server/test/conftest.py
-import os
-import time
-import threading
-import contextlib
-import requests
+import io
+import random
+import string
 import pytest
-from werkzeug.serving import make_server
-from server import create_app
+from server import app
 
-# --- 1) Flask testklient (ingen nätverkstrafik) ---
-@pytest.fixture
+# ---------- Helpers ----------
+def _rand(n=6):
+    return ''.join(random.choice(string.ascii_lowercase) for _ in range(n))
+
+# ---------- Test mode (disable rate limiting) ----------
+@pytest.fixture(scope="session", autouse=True)
+def configure_app_for_tests():
+    # OBS: Flask-Limiter kan redan vara initierad; config minskar ändå brus i loggar
+    app.config.update(
+        TESTING=True,
+        RATELIMIT_ENABLED=False,
+        RATELIMIT_STORAGE_URI="memory://",
+    )
+
+# ---------- DB must be up ----------
+@pytest.fixture(scope="session", autouse=True)
+def db_available():
+    c = app.test_client()  # egen klient för att undvika scope-krockar
+    js = (c.get("/healthz").get_json() or {})
+    assert js.get("db_connected") is True, (
+        "DB is not connected according to /healthz. "
+        "Start DB (docker compose up -d db) or export DB_* env vars before running tests."
+    )
+    return True
+
+# ---------- HTTP client (function scope so it plays nice with other tests) ----------
+@pytest.fixture(scope="function")
 def client():
-    app = create_app()                 # inga args
-    app.config.update(TESTING=True)    # uppdatera efteråt
-    with app.test_client() as c:
-        yield c
+    return app.test_client()
 
-# --- 2) Live server (offline som default, BASE_URL om satt) ---
+# --- Auth ---
 @pytest.fixture(scope="session")
-def live_server():
-    env_url = os.getenv("BASE_URL")
-    if env_url:
-        _wait_until_up(env_url, timeout_s=60)
-        yield env_url
-        return
+def auth_token(db_available):
+    c = app.test_client()
+    # skapa EN stabil test-user för hela sessionen
+    import random, string
+    suf = ''.join(random.choice(string.ascii_lowercase) for _ in range(6))
+    email = f"{suf}@example.test"
+    pwd = "Passw0rd!"
+    c.post("/api/create-user", json={"login": suf, "email": email, "password": pwd})
+    js = c.post("/api/login", json={"email": email, "password": pwd}).get_json() or {}
+    assert "token" in js, f"login failed: {js}"
+    return js["token"]
 
-    host = os.getenv("TEST_HOST", "127.0.0.1")
-    port = int(os.getenv("TEST_PORT", "5001"))
-    url = f"http://{host}:{port}"
-
-    app = create_app()                 # inga args
-    app.config.update(TESTING=True)    # säkra testläge
-
-    server = make_server(host, port, app)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    try:
-        _wait_until_up(url, timeout_s=60)
-    except Exception:
-        with contextlib.suppress(Exception):
-            server.shutdown()
-        thread.join(timeout=5)
-        pytest.fail(f"Tjänsten svarade inte på {url} inom 60s")
-
-    try:
-        yield url
-    finally:
-        with contextlib.suppress(Exception):
-            server.shutdown()
-        thread.join(timeout=5)
-
-# --- 3) Bas-URL som HTTP-tester använder ---
 @pytest.fixture(scope="session")
-def base_url(live_server):
-    return live_server
+def auth_headers(auth_token):
+    return {"Authorization": f"Bearer {auth_token}"}
 
-# --- Hjälpare ---
-def _wait_until_up(url: str, timeout_s: int = 60):
-    deadline = time.time() + timeout_s
-    health = url.rstrip("/") + "/healthz"
-    last_err = None
-    while time.time() < deadline:
-        try:
-            r = requests.get(health, timeout=1)
-            if r.status_code < 500:
-                return
-        except Exception as e:
-            last_err = e
-        time.sleep(1)
-    raise RuntimeError(f"Tjänsten svarade inte på {url} inom {timeout_s}s; sista fel: {last_err}")
+# ---------- Test data ----------
+
+# --- Testdata ---
+@pytest.fixture
+def tiny_valid_pdf_bytes():
+    # Minimal giltig PDF-header
+    return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
+
+# EN uppladdning per testrunda, med SAMMA user som auth_headers
+@pytest.fixture(scope="session")
+def upload_sample_pdf(auth_headers):
+    c = app.test_client()
+    import io
+    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
+    data = {"file": (io.BytesIO(pdf_bytes), "report.pdf"), "name": "report.pdf"}
+    r = c.post("/api/upload-document",
+               headers=auth_headers,
+               data=data,
+               content_type="multipart/form-data")
+    assert r.status_code in (200, 201), r.get_data(as_text=True)
+    return r.get_json()
