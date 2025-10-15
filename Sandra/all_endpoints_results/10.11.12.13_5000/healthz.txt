@@ -1,0 +1,9 @@
+---- healthz ----
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:48 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 64
+
+{"db_connected":true,"message":"The server is up and running."}

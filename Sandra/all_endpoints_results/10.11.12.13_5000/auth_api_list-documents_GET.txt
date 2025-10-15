@@ -1,0 +1,9 @@
+---- auth_api_list-documents_GET ----
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:49 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 170
+
+{"documents":[{"creation":"2025-10-15T09:48:49.433695","id":16,"name":"test.pdf","sha256":"CD3E6EBA9357AC744E60ACF05102C646F6F3FA3ADC56C18487C8A0E1B6A134ED","size":21}]}

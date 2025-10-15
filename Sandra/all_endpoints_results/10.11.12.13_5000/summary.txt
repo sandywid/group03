@@ -1,0 +1,2 @@
+Summary of likely hits (searching for root:, password-like, 40-hex sha1 etc)
+POTENTIAL: all_endpoints_results/10.11.12.13_5000/summary.txt

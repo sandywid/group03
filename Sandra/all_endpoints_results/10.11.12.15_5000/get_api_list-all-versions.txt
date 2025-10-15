@@ -1,0 +1,9 @@
+---- get_api_list-all-versions ----
+HTTP/1.1 401 UNAUTHORIZED
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:49:09 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 52
+
+{"error":"Missing or invalid Authorization header"}

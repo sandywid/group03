@@ -1,0 +1,9 @@
+---- auth_api_create-watermark_POST ----
+HTTP/1.1 400 BAD REQUEST
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:49 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 42
+
+{"error":"document_id (int) is required"}

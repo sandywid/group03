@@ -1,0 +1,9 @@
+---- auth_api_read-watermark_POST ----
+HTTP/1.1 400 BAD REQUEST
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:49 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 33
+
+{"error":"document id required"}

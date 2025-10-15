@@ -1,0 +1,9 @@
+---- login ----
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:48:49 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 185
+
+{"expires_in":86400,"token":".eJyrVirNTFGyMjLTUcrJT8_MU7JSKkktLiktTi0yNDczMDUyNDeyVNJRSs1NzMzBKumQWpGYW5CTqpeTn5yYo1QLAA04GZE.aO9uAQ.6Jw7W-RJjvkopNkMCvaRZtHfHok","token_type":"bearer"}

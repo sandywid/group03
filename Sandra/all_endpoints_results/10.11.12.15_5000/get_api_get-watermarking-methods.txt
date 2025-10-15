@@ -1,0 +1,9 @@
+---- get_api_get-watermarking-methods ----
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Wed, 15 Oct 2025 09:49:09 GMT
+Connection: close
+Content-Type: application/json
+Content-Length: 641
+
+{"count":5,"methods":[{"description":"Toy method that appends a watermark record after the PDF EOF. Position is ignored.","name":"toy-eof"},{"description":"Toy method that appends a watermark record after the PDF EOF. Position and key are ignored.","name":"bash-bridge-eof"},{"description":"Toy method that appends a watermark record after the PDF EOF. Position is ignored.","name":"email-eof"},{"description":"Toy method that appends a watermark record after the PDF EOF. Position is ignored.","name":"hash-eof"},{"description":"Toy method that appends a watermark record after the PDF EOF. Position is ignored.","name":"email-producer"}]}
