@@ -93,7 +93,7 @@ rmap = None # /Sandra
 
 import watermarking_utils as WMUtils
 from watermarking_method import WatermarkingMethod
-#from watermarking_utils import METHODS, apply_watermark, read_watermark, explore_pdf, is_watermarking_applicable, get_method
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -106,11 +106,11 @@ SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
 # Fils/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "Group_3.pdf"  
+BASE_PDF = STATIC_DIR / "Group_3.pdf"
 
 
+#for end of phase one update / Sdra
 def init_rmap():
-    """Initiera RMAP with right key paths."""
     id_manager = IdentityManager(
         CLIENT_KEYS_DIR,  # clients public keys (clients/*.asc) /Sandra 
         SERVER_PUB,       # serverns public keys /Sandra
