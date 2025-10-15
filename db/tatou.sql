@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS `Users` (
   `email` VARCHAR(320) NOT NULL,               -- RFC-compliant max length
   `hpassword` VARCHAR(255) NOT NULL,           -- password hash (argon2/bcrypt/etc)
   `login` VARCHAR(64) NOT NULL,                -- username/handle
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_users_email` (`email`)
+  PRIMARY KEY (`id`),                                   
+  UNIQUE KEY `uq_users_email` (`email`)        -- email unique   
+  UNIQUE KEY `uq_users_login` (`login`)        -- username unique
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Documents table

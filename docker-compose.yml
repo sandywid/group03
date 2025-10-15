@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
   server:
@@ -6,10 +6,11 @@ services:
       context: server
       dockerfile: Dockerfile
     ports:
-      - "5050:5000"
+      - "5000:5000"
     volumes:
       - user-files:/app/storage
       - ./server/src/keys:/app/src/keys:ro #added this one for the keys/Sandra
+      - ./logs:/var/log/app #added this for logs /Sandra
     environment:
       - PYTHONUNBUFFERED=1
       # DB connection details for future use by the API
@@ -19,7 +20,7 @@ services:
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
       - SECRET_KEY=${SECRET_KEY} #Added this here too/Sandra
-      - SERVER_PRIV_PASSPHRASE=${SERVER_PRIV_PASSPHRASE} #added this for key to out secrey key/Sandra
+      - LOG_PATH=/var/log/app/app.log #added this for logs /Sandra
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +43,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     restart: unless-stopped
 
   phpmyadmin:
@@ -53,7 +54,7 @@ services:
       - UPLOAD_LIMIT=64M     # <-- use a unit and quote if using YAML key:value form
       - MEMORY_LIMIT=256M
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       db:
         condition: service_healthy

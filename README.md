@@ -51,7 +51,7 @@ docker compose logs -f
 # Test if the API is up
 http -v :5000/healthz
 
-# Open your browser at 127.0.0.1:5000 to check if the website is up.
+# Open your browser at 127.0.0.1:5050 to check if the website is up.
 ```
 
 

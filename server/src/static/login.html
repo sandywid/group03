@@ -20,21 +20,21 @@
   </header>
 
   <main class="container">
-    <section class="card" style="max-width:420px;margin:40px auto;">
+    <section class="card card--auth">
       <h1 style="margin-top:0;">Log in to your account</h1>
       <form id="loginForm" method="post">
         <div style="margin-bottom:16px;">
           <label for="email">Email</label><br>
-          <input type="email" id="email" name="email" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
+          <input type="email" id="email" name="email" required class="input">
         </div>
         <div style="margin-bottom:20px;">
           <label for="password">Password</label><br>
-          <input type="password" id="password" name="password" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
+          <input type="password" id="password" name="password" required class="input">
         </div>
-        <button class="btn btn--primary" type="submit" style="width:100%;">Log in</button>
+        <button class="btn btn--primary btn--block" type="submit">Log in</button>
       </form>
       <p style="margin-top:16px;font-size:14px;">Don’t have an account? <a href="signup.html">Sign up</a></p>
-    </section>
+    </section>    
   </main>
 
   <script>

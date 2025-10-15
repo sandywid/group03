@@ -16,6 +16,34 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
+#added for loggning /Sandra
+from flag_detection import detect_flag_attempt
+import logging, sys, json
+try:
+    from pythonjsonlogger import jsonlogger
+    formatter = jsonlogger.JsonFormatter()
+except Exception:
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+
+log_path = os.getenv("LOG_PATH", "/var/log/app/app.log")
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# --- 1. Log to stdout (can be seen in docker logs) /Sandra
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+root_logger.addHandler(stream_handler)
+
+# --- 2. Log to file (can be seen in group03/logs/app.log) /Sandra
+file_handler = logging.FileHandler(log_path)
+file_handler.setFormatter(formatter)
+root_logger.addHandler(file_handler)
+
+# Testlog when starting /Sandra
+logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
+
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -35,21 +63,23 @@ from flask import current_app
 from sqlalchemy import text, create_engine
 from datetime import datetime
 
+# end of phase one / Sandra
 def _db_url_from_cfg(cfg) -> str:
     return (
         f"mysql+pymysql://{cfg['DB_USER']}:{cfg['DB_PASSWORD']}"
         f"@{cfg['DB_HOST']}:{cfg['DB_PORT']}/{cfg['DB_NAME']}?charset=utf8mb4"
     )
 
+# end of phase one / Sandra
 def get_engine():
-    app = current_app  # använder den aktiva Flask-appen /Sandra
+    app = current_app  # using the active Flask-app /Sandra
     eng = app.config.get("_ENGINE")
     if eng is None:
         eng = create_engine(_db_url_from_cfg(app.config), pool_pre_ping=True, future=True)
         app.config["_ENGINE"] = eng
     return eng
 
-
+# end of phase one / Sandra
 from rmap.identity_manager import IdentityManager
 from rmap.rmap import RMAP
 
@@ -67,25 +97,24 @@ from watermarking_method import WatermarkingMethod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Keys /Sandra
+# Keys for end of phase one/Sandra
 KEYS_DIR = os.path.join(BASE_DIR, "keys")
 CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
 SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
-# Filer/PDF /Sandra
-STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "Group_3.pdf"   
 
-SERVER_PRIV_PASSPHRASE = os.getenv("SERVER_PRIV_PASSPHRASE") #added our keys, keys /Sandra
+# Fils/PDF /Sandra
+STATIC_DIR = Path(BASE_DIR) / "static"
+BASE_PDF = STATIC_DIR / "Group_3.pdf"
+
 
 #for end of phase one update / Sdra
 def init_rmap():
     id_manager = IdentityManager(
-        CLIENT_KEYS_DIR,  # klienters publika nycklar (clients/*.asc)
-        SERVER_PUB,       # serverns publika nyckel
-        SERVER_PRIV,       # serverns privata nyckel
-        SERVER_PRIV_PASSPHRASE #key to our privatekey
+        CLIENT_KEYS_DIR,  # clients public keys (clients/*.asc) /Sandra 
+        SERVER_PUB,       # serverns public keys /Sandra
+        SERVER_PRIV,       # serverns private key /Sandra
     )
     return RMAP(id_manager)
 
@@ -160,6 +189,34 @@ def create_app():
     if rmap is None:
         rmap = init_rmap()
 
+#Added for logs /Sandra 
+    # enkel JSON-logger till stdout (docker log driver fångar detta)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(jsonlogger.JsonFormatter())
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    
+    # se även till att logger "app.flag_detector" använder root
+    @app.before_request
+    def before():
+        detect_flag_attempt()
+
+    @app.after_request
+    def after(response):
+        # Om flag_attempt: vi kan välja blockera tidigt eller låta request gå vidare men logga
+        if getattr(g, "flag_attempt", False):
+            # ex: sätt header så att klient får generisk 403 (valfritt)
+            response.status_code = 403
+            response.set_data("Don't steal our flag man")
+            # Optionellt: skriv en extra loggrad med respons
+            logging.getLogger("app.flag_detector").warning({
+                "event": "flag_attempt_blocked",
+                "request_id": g.request_id,
+                "client_ip": g.flag_attempt_event["client_ip"]
+            })
+        return response
+
 
 #added this to prevent eg. brute-force - baseline for the whole app/Sandra
     limiter = Limiter(
@@ -168,21 +225,21 @@ def create_app():
         default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
     )
 
-# key function: per log-in, if not logged-in its per IP/Sandra
+    # key function: per log-in, if not logged-in its per IP/Sandra
     def user_or_ip():
         try:
             return f"user:{int(g.user['id'])}"
         except Exception:
             return f"ip:{get_remote_address()}"
 
-#key for each account at log-in (fallback to IP)/Sandra
+    #key for each account at log-in (fallback to IP)/Sandra
     def login_key():
         body = request.get_json(silent=True) or {}
         login = (body.get("login") or body.get("email") or "").strip().lower()
         return f"acct:{login}" if login else f"ip:{get_remote_address()}"
 
 
- #shared limit for upload (per user/IP)/Sandra
+    #shared limit for upload (per user/IP)/Sandra
     upload_limit = limiter.shared_limit(
         "2 per minute; 20 per hour",
         scope="upload",
@@ -270,31 +327,59 @@ def create_app():
             db_ok = False
         return jsonify({"message": "The server is up and running.", "db_connected": db_ok}), 200
 
-    # POST /api/create-user {email, login, password}
+    # POST /api/create-user {username,email, login, password}
     @app.post("/api/create-user")
     def create_user():
         payload = request.get_json(silent=True) or {}
         email = (payload.get("email") or "").strip().lower()
         login = (payload.get("login") or "").strip()
         password = payload.get("password") or ""
+    
+    # Input validation
         if not email or not login or not password:
             return jsonify({"error": "email, login, and password are required"}), 400
+    
+    # Add username format validation
+        if not re.match(r'^[a-zA-Z0-9_-]{3,64}$', login):
+            return jsonify({
+            "error": "Username must be 3-64 characters long and contain only letters, numbers, hyphens, and underscores"
+        }), 400
 
         hpw = generate_password_hash(password)
 
         try:
             with get_engine().begin() as conn:
+            # Check if username or email already exists for better error messages
+                existing = conn.execute(
+                    text("SELECT login, email FROM Users WHERE login = :login OR email = :email"),
+                    {"login": login, "email": email}
+            ).first()
+            
+                if existing:
+                    if existing.login == login:
+                        return jsonify({"error": "Username already taken"}), 409
+                    if existing.email == email:
+                        return jsonify({"error": "Email already registered"}), 409
+            
+            # Insert the new user
                 res = conn.execute(
                     text("INSERT INTO Users (email, hpassword, login) VALUES (:email, :hpw, :login)"),
                     {"email": email, "hpw": hpw, "login": login},
-                )
+            )
                 uid = int(res.lastrowid)
                 row = conn.execute(
                     text("SELECT id, email, login FROM Users WHERE id = :id"),
-                    {"id": uid},
-                ).one()
-        except IntegrityError:
-            return jsonify({"error": "email or login already exists"}), 409
+                {"id": uid},
+            ).one()
+        except IntegrityError as e:
+        # More specific error messages
+            error_str = str(e.orig).lower() if hasattr(e, 'orig') else str(e).lower()
+            if 'uq_users_login' in error_str or 'login' in error_str:
+                return jsonify({"error": "Username already taken"}), 409
+            elif 'uq_users_email' in error_str or 'email' in error_str:
+                return jsonify({"error": "Email already registered"}), 409
+            else:
+                return jsonify({"error": "Account could not be created (duplicate data)"}), 409
         except Exception as e:
             return jsonify({"error": f"database error: {str(e)}"}), 503
 
@@ -357,9 +442,9 @@ def create_app():
 
         ts = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
         final_name = (request.form.get("name") or Path(fname).stem).strip()
-        if not re.fullmatch(r"[A-Za-zÅÄÖåäö]+", final_name):
+        if not re.fullmatch(r"[A-Za-zÅÄÖåäö0-9.]+", final_name):
             return jsonify({
-                "error": "The name can only contain letters (A–Z, a–z, ÅÄÖ, åäö) – no numbers or special characters."
+                "error": "The name can only contain letters (A–Z, a–z, ÅÄÖ, åäö) – and numbers (0-9) - no special characters exept for dot."
             }), 400
         stored_name = f"{ts}__{fname}"
         stored_path = user_dir / stored_name
@@ -1059,7 +1144,7 @@ def create_app():
             watermarked_bytes = wm.add_watermark(
                 pdf=str(BASE_PDF),
                 secret=secret_payload,
-                key="rmap_session_key_2025",
+                key="rmap_session_key_2025", #I know it should not be here but i got too angry cause it dit not work to move it :) /Sandra
                 position=None,
             )
 

@@ -10,12 +10,14 @@ dependencies = [
 	"PyMySQL==1.1.2",
 	"SQLAlchemy==2.0.43",
 	"dill==0.4.0",
-	"rmap @ git+https://github.com/nharrand/RMAP-Server.git@v1.0.0", #added for end of phase update/Sandra
+	"rmap @https://github.com/nharrand/RMAP-Server/releases/download/v2.0.0/rmap-2.0.0-py3-none-any.whl", #added for end of phase update/Sandra
 	"Flask-Limiter>=3.0.0", # added this one for the brute-force thing/S
 	"cryptography>=41.0.0", #added this for my WM method /Sandra
 	"pikepdf>=8,<11", #added for my WM method nr2/Sandra
 	"pypdf>=4.0.0", #added for my WM method/Adna
-  	"cryptography>=42.0.0" #added for my WM method /Adna
+  	"cryptography>=42.0.0", #added for my WM method /Adna
+	"python-json-logger==2.0.7" #added for logging /Sandra
+
 ]
 
 [project.optional-dependencies]

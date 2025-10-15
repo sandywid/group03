@@ -20,54 +20,97 @@
   </header>
 
   <main class="container">
-    <section class="card" style="max-width:420px;margin:40px auto;">
+    <section class="card card--auth">
       <h1 style="margin-top:0;">Create your account</h1>
       <form id="signupForm" method="post">
-        <div style="margin-bottom:16px;">
-          <label for="login">Username</label><br>
-          <input type="text" id="login" name="login" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
-        </div>
-        <div style="margin-bottom:16px;">
-          <label for="email">Email</label><br>
-          <input type="email" id="email" name="email" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
-        </div>
-        <div style="margin-bottom:20px;">
-          <label for="password">Password</label><br>
-          <input type="password" id="password" name="password" required style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
-        </div>
-        <button class="btn btn--primary" type="submit" style="width:100%;">Sign up</button>
-      </form>
+  <div style="margin-bottom:16px;">
+    <label for="login">Username</label><br>
+    <input type="text" 
+           id="login" 
+           name="login" 
+           required 
+           class="input"
+           pattern="[a-zA-Z0-9_-]{3,64}"
+           title="3-64 characters, letters, numbers, hyphens and underscores only">
+    <div id="loginError" style="color:#dc2626; font-size:13px; margin-top:4px; display:none;">
+      Username must be 3-64 characters (letters, numbers, hyphens, underscores)
+    </div>
+  </div>
+  <div style="margin-bottom:16px;">
+    <label for="email">Email</label><br>
+    <input type="email" id="email" name="email" required class="input">
+  </div>
+  <div style="margin-bottom:20px;">
+    <label for="password">Password</label><br>
+    <input type="password" id="password" name="password" required class="input" minlength="8">
+  </div>
+  <button class="btn btn--primary btn--block" type="submit">Sign up</button>
+</form>
       <p style="margin-top:16px;font-size:14px;">Already have an account? <a href="login.html">Log in</a></p>
-    </section>
+    </section>    
   </main>
 
   <script>
     const form = document.getElementById('signupForm');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const data = {
-        login: form.login.value,
-        email: form.email.value,
-        password: form.password.value
-      };
-      try {
-        const resp = await fetch('/api/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          alert('Error: ' + (err.message || resp.statusText));
-          return;
-        }
-        const result = await resp.json();
-        alert('Account created! Welcome ' + result.login);
-        window.location.href = 'login.html';
-      } catch (err) {
-        alert('Network error: ' + err.message);
-      }
+const loginInput = document.getElementById('login');
+const loginError = document.getElementById('loginError');
+
+// Add real-time validation for username if username already exist or not
+loginInput.addEventListener('input', (e) => {
+  const value = e.target.value;
+  if (value && !/^[a-zA-Z0-9_-]{3,64}$/.test(value)) {
+    loginInput.style.borderColor = '#dc2626';
+    loginError.style.display = 'block';
+  } else {
+    loginInput.style.borderColor = '';
+    loginError.style.display = 'none';
+  }
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const username = form.login.value.trim();
+  const email = form.email.value.trim();
+  const password = form.password.value;
+  
+  // Validate username format
+  if (!/^[a-zA-Z0-9_-]{3,64}$/.test(username)) {
+    alert('Invalid username format. Please use 3-64 characters with only letters, numbers, hyphens, and underscores.');
+    return;
+  }
+  
+  const data = {
+    login: username,
+    email: email,
+    password: password
+  };
+  
+  try {
+    const resp = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
     });
+    
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      // Show specific error message
+      if (err.error) {
+        alert('Error: ' + err.error);
+      } else {
+        alert('Error: ' + resp.statusText);
+      }
+      return;
+    }
+    
+    const result = await resp.json();
+    alert('Account created! Welcome ' + result.login);
+    window.location.href = 'login.html';
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  }
+});
   </script>
 </body>
 </html>
