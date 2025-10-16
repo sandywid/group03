@@ -938,9 +938,15 @@ def create_app():
         try:
             plugins_dir.mkdir(parents=True, exist_ok=True)
             plugin_path = (plugins_dir / filename).resolve()
-            # Check the resolved path is within plugins_dir
+            # Check the resolved path is within plugins_dir using pathlib
             plugins_dir_resolved = plugins_dir.resolve()
-            if not str(plugin_path).startswith(str(plugins_dir_resolved)):
+            # Use is_relative_to in Python 3.9+, else manually check parents
+            try:
+                is_within = plugin_path.is_relative_to(plugins_dir_resolved)
+            except AttributeError:
+                # For Python <3.9
+                is_within = plugins_dir_resolved == plugin_path or plugins_dir_resolved in plugin_path.parents
+            if not is_within:
                 return jsonify({"error": "invalid filename/path"}), 400
         except Exception as e:
             return jsonify({"error": f"plugin path error: {e}"}), 500
