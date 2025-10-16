@@ -937,12 +937,16 @@ def create_app():
         plugins_dir = storage_root / "files" / "plugins"
         try:
             plugins_dir.mkdir(parents=True, exist_ok=True)
-            plugin_path = plugins_dir / filename
+            plugin_path = (plugins_dir / filename).resolve()
+            # Check the resolved path is within plugins_dir
+            plugins_dir_resolved = plugins_dir.resolve()
+            if not str(plugin_path).startswith(str(plugins_dir_resolved)):
+                return jsonify({"error": "invalid filename/path"}), 400
         except Exception as e:
             return jsonify({"error": f"plugin path error: {e}"}), 500
 
         if not plugin_path.exists():
-            return jsonify({"error": f"plugin file not found: {safe}"}), 404
+            return jsonify({"error": f"plugin file not found: {filename}"}), 404
 
         # Unpickle the object (dill if available; else std pickle)
         try:
