@@ -932,12 +932,23 @@ def create_app():
         if not filename:
             return jsonify({"error": "filename is required"}), 400
 
+        # Validate filename: disallow absolute paths, traversal, separators, sanitize with werkzeug
+        cleaned_filename = secure_filename(filename)
+        if (
+            not cleaned_filename or
+            cleaned_filename != filename or
+            "/" in filename or "\\" in filename or
+            ".." in filename or
+            Path(filename).is_absolute()
+        ):
+            return jsonify({"error": "invalid or unsafe plugin filename"}), 400
+
         # Locate the plugin in /storage/files/plugins (relative to STORAGE_DIR)
         storage_root = Path(app.config["STORAGE_DIR"])
         plugins_dir = storage_root / "files" / "plugins"
         try:
             plugins_dir.mkdir(parents=True, exist_ok=True)
-            plugin_path = (plugins_dir / filename).resolve()
+            plugin_path = (plugins_dir / cleaned_filename).resolve()
             # Check the resolved path is within plugins_dir using pathlib
             plugins_dir_resolved = plugins_dir.resolve()
             # Use is_relative_to in Python 3.9+, else manually check parents
