@@ -1,4 +1,3 @@
-#Added this for flag2/Adna
 #!/usr/bin/env bash
 
 if [[ -z "${FLAG_2:-}" ]]; then
