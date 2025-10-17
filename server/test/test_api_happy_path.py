@@ -1,4 +1,7 @@
 # test/test_api_happy_path.py
+import pytest
+pytestmark = pytest.mark.usefixtures("require_db")
+
 import io
 import re
 

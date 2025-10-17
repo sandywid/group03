@@ -7,15 +7,16 @@ def _signup_and_login(client):
     email = f"{suf}@example.test"
     password = "Pw123456!"
     client.post("/api/create-user", json={"login": suf, "email": email, "password": password})
-    tok = client.post("/api/login", json={"email": email, "password": password}).get_json()["token"]
-    return {"Authorization": f"Bearer {tok}"}
+    js = client.post("/api/login", json={"email": email, "password": password}).get_json() or {}
+    assert "token" in js, f"login failed: {js}"   # be defensive
+    return {"Authorization": f"Bearer {js['token']}"}
 
-def test_missing_file(client):
+def test_missing_file(client, require_db):
     headers = _signup_and_login(client)
     r = client.post("/api/upload-document", headers=headers, data={"name": "no_file.pdf"})
     assert r.status_code in (400, 422)
 
-def test_wrong_mimetype(client):
+def test_wrong_mimetype(client, require_db):
     headers = _signup_and_login(client)
     r = client.post(
         "/api/upload-document",
