@@ -1,4 +1,7 @@
 # test/test_security_authorization.py
+import pytest
+pytestmark = pytest.mark.usefixtures("require_db")
+
 import random, string, io, pytest
 from server import app
 
