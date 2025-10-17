@@ -11,6 +11,7 @@ services:
       - user-files:/app/storage
       - ./server/src/keys:/app/src/keys:ro #added this one for the keys/Sandra
       - ./logs:/var/log/app #added this for logs /Sandra
+      - ./server/flag:/app/flag:ro #added for final development/logs/Sandra
     environment:
       - PYTHONUNBUFFERED=1
       # DB connection details for future use by the API
