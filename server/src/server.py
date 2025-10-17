@@ -31,7 +31,7 @@ os.makedirs(os.path.dirname(log_path), exist_ok=True)
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 
-# --- 1. Log to stdout (syns i docker logs) /Sandra
+# --- 1. Log to stdout (can be seen in docker logs) /Sandra
 stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(formatter)
 root_logger.addHandler(stream_handler)
@@ -97,7 +97,7 @@ from watermarking_method import WatermarkingMethod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Keys for rmap /Sandra
+# Keys for end of phase one/Sandra
 KEYS_DIR = os.path.join(BASE_DIR, "keys")
 CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
