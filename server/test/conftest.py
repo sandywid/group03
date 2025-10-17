@@ -5,6 +5,10 @@ import random
 import string
 import pytest
 
+# --- turn off rate limiting BEFORE importing the app ---
+os.environ.setdefault("RATELIMIT_ENABLED", "0")       
+os.environ.setdefault("RATELIMIT_STORAGE_URI", "memory://") 
+
 try:
     from dotenv import load_dotenv
     load_dotenv(pathlib.Path(__file__).resolve().parents[2] / ".env", override=False)
@@ -29,22 +33,41 @@ def _rand(n=6):
 # ---------- Test mode (disable rate limiting) ----------
 @pytest.fixture(scope="session", autouse=True)
 def configure_app_for_tests():
-   
     app.config.update(
         TESTING=True,
         RATELIMIT_ENABLED=False,
         RATELIMIT_STORAGE_URI="memory://",
     )
+    # hard-disable an already-initialized limiter (if present)
+    lim = getattr(app, "extensions", {}).get("limiter")
+    if lim:
+        try:
+            lim.enabled = False
+        except Exception:
+            pass
 
-# ---------- DB must be up ----------
+# --- Detect DB once, without failing the whole session ---
+HAS_DB = None
+
 @pytest.fixture(scope="session", autouse=True)
-def db_available():
-    c = app.test_client()  # own client to avoid scope-clashes
-    js = (c.get("/healthz").get_json() or {})
-    assert js.get("db_connected") is True, (
-        "DB is not connected according to /healthz. "
-        "Start DB (docker compose up -d db) or export DB_* env vars before running tests."
-    )
+def detect_db():
+    """Detect DB availability once and store the result."""
+    global HAS_DB
+    js = (app.test_client().get("/healthz").get_json() or {})
+    HAS_DB = bool(js.get("db_connected"))
+    if not HAS_DB:
+        print("\n[tests] DB not connected: tests marked 'requires_db' will be skipped.")
+    return HAS_DB
+
+@pytest.fixture(scope="session")
+def require_db():
+    """Use in tests that need the DB."""
+    if not HAS_DB:
+        pytest.skip("DB not connected")
+
+# --- Back-compat so old fixtures keep working ---
+@pytest.fixture(scope="session")
+def db_available(require_db):
     return True
 
 # ---------- HTTP client (function scope so it plays nice with other tests) ----------
@@ -78,7 +101,7 @@ def tiny_valid_pdf_bytes():
 
 # ONE upload for each test run, with THE SAME user as auth_headers
 @pytest.fixture(scope="session")
-def upload_sample_pdf(auth_headers):
+def upload_sample_pdf(auth_headers, require_db):
     c = app.test_client()
     import io
     pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
