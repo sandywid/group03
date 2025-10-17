@@ -31,11 +31,7 @@ os.makedirs(os.path.dirname(log_path), exist_ok=True)
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 
-<<<<<<< Updated upstream
 # --- 1. Log to stdout (can be seen in docker logs) /Sandra
-=======
-# --- 1. Log to stdout (syns i docker logs) /Sandra
->>>>>>> Stashed changes
 stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(formatter)
 root_logger.addHandler(stream_handler)
@@ -45,11 +41,7 @@ file_handler = logging.FileHandler(log_path)
 file_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 
-<<<<<<< Updated upstream
 # Testlog when starting /Sandra
-=======
-# Testlogg at start /Sandra
->>>>>>> Stashed changes
 logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
 
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
@@ -105,27 +97,19 @@ from watermarking_method import WatermarkingMethod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-<<<<<<< Updated upstream
 # Keys for end of phase one/Sandra
-=======
-# Keys for rmap /Sandra
->>>>>>> Stashed changes
 KEYS_DIR = os.path.join(BASE_DIR, "keys")
 CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
 SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
-<<<<<<< Updated upstream
 
 # Fils/PDF /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
 BASE_PDF = STATIC_DIR / "Group_3.pdf"
 
-=======
-# Filer/PDF for rmap /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
 BASE_PDF = STATIC_DIR / "Group_3.pdf"   
->>>>>>> Stashed changes
 
 #for end of phase one update / Sdra
 def init_rmap():
@@ -222,17 +206,13 @@ def create_app():
 
     @app.after_request
     def after(response):
-<<<<<<< Updated upstream
         # Om flag_attempt: vi kan välja blockera tidigt eller låta request gå vidare men logga
         if getattr(g, "flag_attempt", False):
             # ex: sätt header så att klient får generisk 403 (valfritt)
             response.status_code = 403
             response.set_data("Don't steal our flag man")
             # Optionellt: skriv en extra loggrad med respons
-=======
-        # If flag_attempt: it just writes in the logs /Sandra
         if getattr(g, "flag_attempt", False):
->>>>>>> Stashed changes
             logging.getLogger("app.flag_detector").warning({
                 "event": "flag_attempt_blocked",
                 "request_id": g.request_id,
