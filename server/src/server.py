@@ -31,7 +31,6 @@ os.makedirs(os.path.dirname(log_path), exist_ok=True)
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.INFO)
 
-<<<<<<< Updated upstream
 # --- 1. Log to stdout (can be seen in docker logs) /Sandra
 stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(formatter)
@@ -43,7 +42,6 @@ file_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 
 # Testlog when starting /Sandra
->>>>>>> Stashed changes
 logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
 
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
