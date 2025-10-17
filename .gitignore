@@ -220,3 +220,5 @@ server_priv.asc
 .python-version
 .DS_Store
 .python-version
+.venv~/
+.venv/
