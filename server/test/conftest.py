@@ -1,91 +1,81 @@
-# server/test/conftest.py
-import os, pathlib
+from __future__ import annotations
+import os
+import time
+import threading
+import contextlib
 import io
 import random
 import string
+
 import pytest
+import requests
+from werkzeug.serving import make_server
+from server import create_app
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(pathlib.Path(__file__).resolve().parents[2] / ".env", override=False)
-except Exception:
-    pass
-
-# default DB_* if missing, and map MARIADB_* => DB_*
-os.environ.setdefault("DB_HOST", "127.0.0.1")
-os.environ.setdefault("DB_PORT", "3306")
-os.environ.setdefault("DB_NAME", "tatou")
-if "DB_USER" not in os.environ and "MARIADB_USER" in os.environ:
-    os.environ["DB_USER"] = os.environ["MARIADB_USER"]
-if "DB_PASSWORD" not in os.environ and "MARIADB_PASSWORD" in os.environ:
-    os.environ["DB_PASSWORD"] = os.environ["MARIADB_PASSWORD"]
-
-from server import app
-
-# ---------- Helpers ----------
-def _rand(n=6):
-    return ''.join(random.choice(string.ascii_lowercase) for _ in range(n))
-
-# ---------- Test mode (disable rate limiting) ----------
-@pytest.fixture(scope="session", autouse=True)
-def configure_app_for_tests():
-   
-    app.config.update(
-        TESTING=True,
-        RATELIMIT_ENABLED=False,
-        RATELIMIT_STORAGE_URI="memory://",
-    )
-
-# ---------- DB must be up ----------
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def db_available():
-    c = app.test_client()  # own client to avoid scope-clashes
-    js = (c.get("/healthz").get_json() or {})
-    assert js.get("db_connected") is True, (
-        "DB is not connected according to /healthz. "
-        "Start DB (docker compose up -d db) or export DB_* env vars before running tests."
-    )
+    if not os.getenv("BASE_URL"):
+        pytest.skip("DB saknas i offline-läget (kräver BASE_URL)")
     return True
 
-# ---------- HTTP client (function scope so it plays nice with other tests) ----------
-@pytest.fixture(scope="function")
+# =========================
+# 1) Flask-klient (session)
+# =========================
+@pytest.fixture(scope="session")
 def client():
-    return app.test_client()
+    app = create_app()
+    app.config.update(TESTING=True)
+    with app.test_client() as c:
+        yield c
 
-# --- Auth ---
+
+# ===============================================
+# 2) Live-server (offline default, BASE_URL online)
+# ===============================================
 @pytest.fixture(scope="session")
-def auth_token(db_available):
-    c = app.test_client()
-    # creates one sable test user per testrun
-    import random, string
-    suf = ''.join(random.choice(string.ascii_lowercase) for _ in range(6))
-    email = f"{suf}@example.test"
-    pwd = "Passw0rd!"
-    c.post("/api/create-user", json={"login": suf, "email": email, "password": pwd})
-    js = c.post("/api/login", json={"email": email, "password": pwd}).get_json() or {}
-    assert "token" in js, f"login failed: {js}"
-    return js["token"]
+def live_server():
+    env_url = os.getenv("BASE_URL")
+    if env_url:
+        _wait_until_up(env_url, 60)
+        yield env_url
+        return
+
+    host = os.getenv("TEST_HOST", "127.0.0.1")
+    port = int(os.getenv("TEST_PORT", "5001"))
+    url = f"http://{host}:{port}"
+
+    app = create_app()
+    app.config.update(TESTING=True)
+
+    server = make_server(host, port, app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        _wait_until_up(url, 60)
+        yield url
+    finally:
+        with contextlib.suppress(Exception):
+            server.shutdown()
+        thread.join(timeout=5)
+
 
 @pytest.fixture(scope="session")
-def auth_headers(auth_token):
-    return {"Authorization": f"Bearer {auth_token}"}
+def base_url(live_server):
+    return live_server
 
-# ---------- Test data ----------
-@pytest.fixture
-def tiny_valid_pdf_bytes():
-    # minimal valid PDF
-    return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
 
-# ONE upload for each test run, with THE SAME user as auth_headers
-@pytest.fixture(scope="session")
-def upload_sample_pdf(auth_headers):
-    c = app.test_client()
-    import io
-    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
-    data = {"file": (io.BytesIO(pdf_bytes), "report.pdf"), "name": "report.pdf"}
-    r = c.post("/api/upload-document",
-               headers=auth_headers,
-               data=data,
-               content_type="multipart/form-data")
-    assert r.status_code in (200, 201), r.get_data(as_text=True)
-    return r.get_json()
+def _wait_until_up(url: str, timeout_s: int = 60):
+    import requests, time
+    deadline = time.time() + timeout_s
+    health = url.rstrip("/") + "/healthz"
+    last_err = None
+    while time.time() < deadline:
+        try:
+            r = requests.get(health, timeout=1)
+            if r.status_code < 500:
+                return
+        except Exception as e:
+            last_err = e
+        time.sleep(1)
+    raise RuntimeError(f"Tjänsten svarade inte på {url} inom {timeout_s}s; sista fel: {last_err}")
