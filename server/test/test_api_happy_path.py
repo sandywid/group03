@@ -1,6 +1,13 @@
 # test/test_api_happy_path.py
 import io
 import re
+import os
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not os.getenv("BASE_URL"),
+    reason="Körs bara när BASE_URL är satt (kräver extern server/DB)"
+)
 
 def test_list_documents_empty(client, auth_headers):
     r = client.get("/api/list-documents", headers=auth_headers)
