@@ -1,0 +1,1 @@
+rmap-client --client-priv keys/server_priv.asc --identity Group_03 --server-pub keys/clients/Group_19.asc --server 10.11.12.17

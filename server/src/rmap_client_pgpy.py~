@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""
+RMAP-klient (fristående) byggd med PGPy direkt.
+Denna variant matchar kursens specifikation i PDF:en och fungerar när den installerade
+rmap-versionen bara har server-sidor (handle_message1/2).
+
+Flöde:
+1) Skapa nonceClient (u64) + valfri identity (t.ex. "Group03").
+2) Kryptera {"nonceClient": <u64>, "identity": <str>} till MÅLGRUPPENS publika nyckel (Group_08.asc).
+3) POST /rmap-initiate med {"payload": base64(ASCII-armored PGP)}.
+4) Dekryptera svaret med DIN privata nyckel -> {"nonceClient": <u64>, "nonceServer": <u64>}; verifiera att nonceClient matchar.
+5) Kryptera {"nonceServer": <u64>} till målgruppens publika nyckel.
+6) POST /rmap-get-link med {"payload": base64(ASCII-armored PGP)}.
+7) Om 'result' är URL, ladda ner PDF.
+
+Nyckelplacering (standard):
+- Din privata nyckel: keys/server_priv.asc
+- Din publika nyckel:  keys/server_pub.asc   (behövs ej för dekryptering men vi behåller vägen)
+- Målgruppens pubkey: keys/clients/Group_08.asc
+
+Kräver:
+  pip install requests pgpy
+"""
+
+import argparse
+import base64
+import json
+import logging
+import os
+import sys
+from urllib.parse import urlparse
+from secrets import randbits
+
+import requests
+import pgpy
+
+DEFAULT_IDENTITY = "Group_03"
+DEFAULT_TARGET_HOST = "10.11.12.7"
+DEFAULT_TARGET_PORT = 5000
+DEFAULT_TARGET_GROUP = "Group_08"
+
+KEYS_DIR = "keys"
+SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
+SERVER_PUB  = os.path.join(KEYS_DIR, "server_pub.asc")  # ej strikt nödvändig här
+CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+def load_pubkey(path: str) -> pgpy.PGPKey:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Saknar publika nyckeln: {path}")
+    k, _ = pgpy.PGPKey.from_file(path)
+    return k
+
+def load_privkey(path: str, passphrase: str | None = None) -> pgpy.PGPKey:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Saknar privata nyckeln: {path}")
+    k, _ = pgpy.PGPKey.from_file(path)
+    if k.is_protected and (passphrase is None or passphrase == ""):
+        raise ValueError("Privata nyckeln är skyddad med passphrase men ingen angavs.")
+    if k.is_protected:
+        k.unlock(passphrase)
+    return k
+
+def encrypt_json_to_pubkey(obj: dict, pubkey: pgpy.PGPKey) -> bytes:
+    """Returnerar base64(bytes(ASCII-armored PGP message))."""
+    msg = pgpy.PGPMessage.new(json.dumps(obj, separators=(",", ":"), ensure_ascii=False))
+    enc = pubkey.encrypt(msg)
+    armored = str(enc).encode("utf-8")
+    return base64.b64encode(armored)
+
+def decrypt_json_with_privkey(payload_b64: str, privkey: pgpy.PGPKey) -> dict:
+    armored = base64.b64decode(payload_b64)
+    msg = pgpy.PGPMessage.from_blob(armored)
+    dec = privkey.decrypt(msg)
+    return json.loads(dec.message)
+
+def download_if_url(result: str, out_dir: str = "downloads") -> str | None:
+    if not (result.startswith("http://") or result.startswith("https://")):
+        return None
+    os.makedirs(out_dir, exist_ok=True)
+    parsed = urlparse(result)
+    filename = os.path.basename(parsed.path) or "watermarked.pdf"
+    out_path = os.path.join(out_dir, filename)
+    logging.info("Laddar ner PDF: %s", result)
+    with requests.get(result, stream=True, timeout=30) as r:
+        r.raise_for_status()
+        with open(out_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+    logging.info("Sparad: %s", out_path)
+    return out_path
+
+def rmap_client_flow(target_host: str, target_port: int, identity: str | None, target_group: str, passphrase: str | None):
+    # Ladda nycklar
+    target_pub_path = os.path.join(CLIENT_KEYS_DIR, f"{target_group}.asc")
+    target_pub = load_pubkey(target_pub_path)
+    my_priv = load_privkey(SERVER_PRIV, passphrase=passphrase)
+
+    base = f"http://{target_host}:{target_port}"
+    # 1) Message1: {"nonceClient", "identity" (valfritt)}
+    nonce_client = randbits(64)
+    payload1 = {"nonceClient": nonce_client}
+    if identity not in (None, ""):
+        payload1["identity"] = identity
+
+    b64_m1 = encrypt_json_to_pubkey(payload1, target_pub).decode("ascii")
+
+    # 2) POST /rmap-initiate
+    logging.info("POST %s", f"{base}/rmap-initiate")
+    r1 = requests.post(f"{base}/rmap-initiate", json={"payload": b64_m1}, timeout=15)
+    r1.raise_for_status()
+    resp1 = r1.json()
+    if "payload" not in resp1:
+        raise RuntimeError(f"/rmap-initiate saknar 'payload': {resp1}")
+
+    # 3) Dekryptera svaret med min privata nyckel
+    data2 = decrypt_json_with_privkey(resp1["payload"], my_priv)
+    # Förväntat: {"nonceClient": <u64>, "nonceServer": <u64>}
+    if int(data2.get("nonceClient", -1)) != int(nonce_client):
+        raise RuntimeError("nonceClient i svaret matchar inte vårt skickade värde.")
+    nonce_server = int(data2["nonceServer"])
+
+    # 4) Message3: {"nonceServer": ...} krypterad till target_pub
+    b64_m3 = encrypt_json_to_pubkey({"nonceServer": nonce_server}, target_pub).decode("ascii")
+
+    # 5) POST /rmap-get-link
+    logging.info("POST %s", f"{base}/rmap-get-link")
+    r2 = requests.post(f"{base}/rmap-get-link", json={"payload": b64_m3}, timeout=15)
+    r2.raise_for_status()
+    resp2 = r2.json()
+    result = resp2.get("result") or resp2.get("link")
+    if not result:
+        raise RuntimeError(f"/rmap-get-link saknar 'result'/'link': {resp2}")
+    return result
+
+def main():
+    ap = argparse.ArgumentParser(description="RMAP-klient med PGPy (utan rmap-klientmetoder).")
+    ap.add_argument("--identity", default=DEFAULT_IDENTITY, help='Din identity (tom = ingen identity).')
+    ap.add_argument("--target-host", default=DEFAULT_TARGET_HOST, help="Andra gruppens host/IP.")
+    ap.add_argument("--target-port", default=DEFAULT_TARGET_PORT, type=int, help="Port (default 5000).")
+    ap.add_argument("--target-group", default=DEFAULT_TARGET_GROUP, help="Målgruppens nyckelfil (ex. Group_08).")
+    ap.add_argument("--passphrase", default=None, help="Passphrase om server_priv.asc är skyddad.")
+    args = ap.parse_args()
+
+    # Snabb filkontroll
+    missing = []
+    for p in (SERVER_PRIV, os.path.join(CLIENT_KEYS_DIR, f"{args.target_group}.asc")):
+        if not os.path.exists(p):
+            missing.append(p)
+    if missing:
+        logging.error("Saknar nyckelfiler: %s", ", ".join(missing))
+        sys.exit(1)
+
+    try:
+        result = rmap_client_flow(args.target_host, args.target_port, args.identity, args.target_group, args.passphrase)
+    except Exception as e:
+        logging.error("Fel: %s", e)
+        sys.exit(1)
+
+    logging.info("Result från /rmap-get-link: %s", result)
+    saved = download_if_url(result)
+    if saved:
+        print(saved)
+    else:
+        example = f"http://{args.target_host}:{args.target_port}/get-version/{result}"
+        logging.info("Resultatet är inte en URL. Prova t.ex.: %s", example)
+        print(result)
+
+if __name__ == "__main__":
+    main()
