@@ -21,6 +21,7 @@ services:
       - DB_USER=${MARIADB_USER}
       - DB_PASSWORD=${MARIADB_PASSWORD}
       - SECRET_KEY=${SECRET_KEY} #Added this here too/Sandra
+      - FLAG_2=${FLAG_2} #Added this for flag2/Adna
       - LOG_PATH=/var/log/app/app.log #added this for logs /Sandra
     depends_on:
       db:
