@@ -41,7 +41,7 @@ file_handler = logging.FileHandler(log_path)
 file_handler.setFormatter(formatter)
 root_logger.addHandler(file_handler)
 
-# Testlog when starting /Sandra
+# Testlogg at start /Sandra
 logging.getLogger(__name__).info({"event": "startup", "message": "Logger initialized", "log_path": log_path})
 
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
@@ -103,11 +103,7 @@ CLIENT_KEYS_DIR = os.path.join(KEYS_DIR, "clients")
 SERVER_PUB = os.path.join(KEYS_DIR, "server_pub.asc")
 SERVER_PRIV = os.path.join(KEYS_DIR, "server_priv.asc")
 
-
-# Fils/PDF /Sandra
-STATIC_DIR = Path(BASE_DIR) / "static"
-BASE_PDF = STATIC_DIR / "Group_3.pdf"
-
+# Filer/PDF for rmap /Sandra
 STATIC_DIR = Path(BASE_DIR) / "static"
 BASE_PDF = STATIC_DIR / "Group_3.pdf"   
 
@@ -206,12 +202,7 @@ def create_app():
 
     @app.after_request
     def after(response):
-        # Om flag_attempt: vi kan välja blockera tidigt eller låta request gå vidare men logga
-        if getattr(g, "flag_attempt", False):
-            # ex: sätt header så att klient får generisk 403 (valfritt)
-            response.status_code = 403
-            response.set_data("Don't steal our flag man")
-            # Optionellt: skriv en extra loggrad med respons
+        # If flag_attempt: it just writes in the logs /Sandra
         if getattr(g, "flag_attempt", False):
             logging.getLogger("app.flag_detector").warning({
                 "event": "flag_attempt_blocked",
