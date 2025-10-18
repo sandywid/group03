@@ -49,9 +49,6 @@ docker compose up --build -d
 # Monitor logs in realtime 
 docker compose logs -f
 
-# Install dependency for API tests
-pip install python-dotenv
-
 # Run all tests
 LOG_PATH=logs/app.log python -m pytest
 
