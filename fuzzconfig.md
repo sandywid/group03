@@ -1,19 +1,24 @@
+## Instructions
+
+```bash
 cd group03/server
 
-1) Create a python virtual environement
+# Create a python virtual environement
 python3 -m venv .venv
 
-2) Activate your virtual environement
+# Activate your virtual environement
 . .venv/bin/activate
 
-3) Install the necessary dependencies
+# Install the necessary dependencies
 python -m pip install -e ".[dev]"
 
-4) Project files used
+```
+
+## Project files used
 
 OpenAPI spec: openapi.yaml (repo root)
 
-Tests:
+## Tests:
 
 server/test/test_fuzz_schemathesis.py ← OpenAPI-based fuzzing
 
@@ -31,38 +36,44 @@ server/test/test_security_authorization.py ← basic authz isolation
 
 server/test/test_regressions.py ← non-regression tests for fixed bugs
 
-5) Go back to root directory (group03) and rebuild the docker image and deploy the containers, make sure that you have deployed tatou correctly and set the env variables
-cd ..
+## From root directory 
+```bash
+cd .. # Go back to root directory (group03)
 
-docker compose up --build -d
+docker compose up --build -d # Rebuild the docker image and deploy the containers, make sure that you have deployed tatou correctly and set the env variables
+```
 
-6) Environment
+## Environment
 Optional: deterministic fuzzing
+```bash
 export HYPOTHESIS_SEED=123
+```
 
-7) Run test suites
-A) Full campaign (all tests)
+## Run test suites
+```bash
+# Full campaign (all tests)
 LOG_PATH=logs/app.log python -m pytest -q server/test
 
-B) Verbose + JUnit (CI-style)
+# Verbose + JUnit (CI-style)
 LOG_PATH=logs/app.log \
 python -m pytest -vv server/test --junitxml=reports/junit.xml
 
-C) Only OpenAPI fuzzer
+# Only OpenAPI fuzzer
 LOG_PATH=logs/app.log \
 python -m pytest -q server/test/test_fuzz_schemathesis.py
 
-D) Only regression tests
+# Only regression tests
 LOG_PATH=logs/app.log \
 python -m pytest -q server/test/test_regressions.py
 
-E) Multiple seeded fuzz rounds
+# Multiple seeded fuzz rounds
 for s in 111 222 333 444 555; do
   HYPOTHESIS_SEED=$s LOG_PATH=logs/app.log \
   python -m pytest -q server/test/test_fuzz_schemathesis.py -k test_api_fuzz || break
 done
+```
 
-8) What each suite does
+## What each suite does
 
 test_fuzz_schemathesis.py → fuzzes all operations from openapi.yaml and asserts no 5xx.
 
