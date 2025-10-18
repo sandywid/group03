@@ -1,11 +1,15 @@
-0) Prereqs
-# From repo root
-python -m venv server/.venv
-source server/.venv/bin/activate
+cd group03/server
 
-pip install "schemathesis[pytest]" hypothesis
+1) Create a python virtual environement
+python3 -m venv .venv
 
-1) Project files used
+2) Activate your virtual environement
+. .venv/bin/activate
+
+3) Install the necessary dependencies
+python -m pip install -e ".[dev]"
+
+4) Project files used
 
 OpenAPI spec: openapi.yaml (repo root)
 
@@ -27,17 +31,16 @@ server/test/test_security_authorization.py ← basic authz isolation
 
 server/test/test_regressions.py ← non-regression tests for fixed bugs
 
-2) Docker
-# From repo root
-docker compose up --build -d
-# Wait until DB is healthy:
-docker compose ps
+5) Go back to root directory (group03) and rebuild the docker image and deploy the containers, make sure that you have deployed tatou correctly and set the env variables
+cd ..
 
-3) Environment
-# Optional: deterministic fuzzing
+docker compose up --build -d
+
+6) Environment
+Optional: deterministic fuzzing
 export HYPOTHESIS_SEED=123
 
-4) Run test suites
+7) Run test suites
 A) Full campaign (all tests)
 LOG_PATH=logs/app.log python -m pytest -q server/test
 
@@ -59,19 +62,13 @@ for s in 111 222 333 444 555; do
   python -m pytest -q server/test/test_fuzz_schemathesis.py -k test_api_fuzz || break
 done
 
-5) What each suite does
+8) What each suite does
 
 test_fuzz_schemathesis.py → fuzzes all operations from openapi.yaml and asserts no 5xx.
 
 test_extra_fuzz.py → invalid tokens, path traversal, extreme /api/login inputs.
 
 test_regressions.py → locks fixes:
-
-/api/login returns 400 for non-object JSON (e.g., ["oops"]).
-
-/api/read-watermark only requires key.
-
-uploads validate type/name and avoid traversal.
 
 test_stateful_fuzz.py → short flows: create → login → list; watermark lifecycle.
 
@@ -82,10 +79,3 @@ test_static_security.py → static traversal & unicode safety.
 test_public_endpoints.py → public routes behave sanely.
 
 test_security_authorization.py → owner isolation checks.
-
-6) Handy commands
-LOG_PATH=logs/app.log python -m pytest -q server/test -vv
-
-HYPOTHESIS_SEED=123 LOG_PATH=logs/app.log pytest -vv server/test --junitxml=reports/junit.xml
-
-HYPOTHESIS_SEED=123 LOG_PATH=logs/app.log pytest -vv server/test/test_fuzz_schemathesis.py   

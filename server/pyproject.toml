@@ -16,13 +16,16 @@ dependencies = [
 	"pikepdf>=8,<11", #added for my WM method nr2/Sandra
 	"pypdf>=4.0.0", #added for my WM method/Adna
   	"cryptography>=42.0.0", #added for my WM method /Adna
-	"python-json-logger==2.0.7" #added for logging /Sandra
+	"python-json-logger==2.0.7", #added for logging /Sandra
+	"python-dotenv>=1.0" #added for testing /Adna
 
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0"
+    "pytest>=7.0.0",
+	"hypothesis>=6.100", #added for fuzzing /Adna
+	"schemathesis>=4.0" #added for fuzzing /Adna
 ]
 
 [tool.pytest.ini_options]
