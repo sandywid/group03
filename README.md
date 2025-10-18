@@ -52,7 +52,7 @@ docker compose logs -f
 # Install dependency for API tests
 pip install python-dotenv
 
-# Run all tests unit and API
+# Run all tests
 LOG_PATH=logs/app.log python -m pytest
 
 # Test if the API is up
