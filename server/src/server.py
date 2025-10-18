@@ -11,6 +11,30 @@ from functools import wraps
 import base64 #added for end of pahse /Sandra
 import binascii #added for end of pahse /Sandra
 
+# Added for fuzzing /Adna
+from werkzeug.exceptions import BadRequest
+
+def _json_dict():
+    """Return JSON-body as dict or empty dict if body is missing/wrong type."""
+    if not request.is_json:
+        return {}
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+def _safe_int(value, *, default=None):
+    """Convert to int in a safe way."""
+    try:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, (list, dict)):
+            return default
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 from flask import Flask, jsonify, request, g, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -47,6 +71,32 @@ logging.getLogger(__name__).info({"event": "startup", "message": "Logger initial
 #added this to include rate limiting, to prevent eg. brute-force attacks /Sandra
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+# --- Limiter compatibility for test mode --------------------------------------
+try:
+    from flask_limiter import NoOpLimiter as _BaseNoOpLimiter
+except Exception:  # very old versions may not have it at all /Adna for fuzzing
+    _BaseNoOpLimiter = object  # dummy base so our class still defines everything /Adna for fuzzing
+
+class _CompatNoOpLimiter(_BaseNoOpLimiter):
+    def __init__(self, *a, **kw):
+        # Intentionally ignore args/kwargs to be drop-in compatible with Limiter(...) /Adna for fuzzing
+        pass
+
+    def limit(self, *a, **kw):
+        def _decorator(f):
+            return f
+        return _decorator
+
+    # Flask-Limiter 4.x sometimes lacks this on NoOpLimiter; we provide it. /Adna for fuzzing
+    def shared_limit(self, *a, **kw):
+        def _decorator(f):
+            return f
+        return _decorator
+
+    # Used on /healthz etc. /Adna for fuzzing
+    def exempt(self, f):
+        return f
+# -------------------------------------------------------------------------------
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
@@ -214,11 +264,19 @@ def create_app():
 
 
 #added this to prevent eg. brute-force - baseline for the whole app/Sandra
-    limiter = Limiter(
-        key_func=get_remote_address,  # per-IP as standard
-        app=app,
-        default_limits=["200 per day", "50 per hour"]  # baseline for all endpoints
-    )
+# BUT: we disable all rate limiting in test mode to avoid 429s in pytest
+    testing_mode = bool(app.config.get("TESTING")) or str(
+        os.environ.get("RATELIMIT_ENABLED", "1")
+    ).lower() in ("0", "false", "no")
+
+    if testing_mode:
+        limiter = _CompatNoOpLimiter()
+    else:
+        limiter = Limiter(
+            key_func=get_remote_address,           # per-IP as standard
+            app=app,
+            default_limits=["200 per day", "50 per hour"],  # baseline for all endpoints
+        )
 
     # key function: per log-in, if not logged-in its per IP/Sandra
     def user_or_ip():
@@ -325,10 +383,13 @@ def create_app():
     # POST /api/create-user {username,email, login, password}
     @app.post("/api/create-user")
     def create_user():
-        payload = request.get_json(silent=True) or {}
-        email = (payload.get("email") or "").strip().lower()
-        login = (payload.get("login") or "").strip()
+        payload = _json_dict()   # safe JSON-object (empty dict if wrong type). Changed for fuzzing specialization task/Adna
+        email = str(payload.get("email", "")).strip().lower()
+        login = str(payload.get("login", "")).strip()
         password = payload.get("password") or ""
+        if not isinstance(password, str):
+            password = ""
+
     
     # Input validation
         if not email or not login or not password:
@@ -385,16 +446,28 @@ def create_app():
     @limiter.limit("3 per minute; 10 per hour", key_func=login_key)   # added per konto
     @limiter.limit("20 per minute", key_func=get_remote_address)      # added per IP
     def login():
-        payload = request.get_json(silent=True) or {}
-        email = (payload.get("email") or "").strip()
-        password = payload.get("password") or ""
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "invalid JSON; expected object"}), 400
+
+    # single, consistent parse
+        email = str(payload.get("email", "")).strip().lower()
+        password = payload.get("password")
+        if not isinstance(password, str):
+            password = ""
+
         if not email or not password:
             return jsonify({"error": "email and password are required"}), 400
 
         try:
             with get_engine().connect() as conn:
                 row = conn.execute(
-                    text("SELECT id, email, login, hpassword FROM Users WHERE email = :email LIMIT 1"),
+                    text("""
+                        SELECT id, email, login, hpassword
+                        FROM Users
+                        WHERE email = :email
+                        LIMIT 1
+                    """),
                     {"email": email},
                 ).first()
         except Exception as e:
@@ -435,7 +508,7 @@ def create_app():
         user_dir = app.config["STORAGE_DIR"] / "files" / g.user["login"]
         user_dir.mkdir(parents=True, exist_ok=True)
 
-        ts = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S%fZ") #Changed for tetsing /Adna
         final_name = (request.form.get("name") or Path(fname).stem).strip()
         if not re.fullmatch(r"[A-Za-zÅÄÖåäö0-9.]+", final_name):
             return jsonify({
@@ -702,16 +775,14 @@ def create_app():
     @require_auth
     def delete_document(document_id: int | None = None):
         # accept id from path, query (?id= / ?documentid=), or JSON body on POST
-        if not document_id:
-            document_id = (
-                request.args.get("id")
-                or request.args.get("documentid")
-                or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
-            )
-        try:
-            doc_id = document_id
-        except (TypeError, ValueError):
+        if document_id is None:
+            j = _json_dict()
+            document_id = request.args.get("id") or request.args.get("documentid") or _safe_int(j.get("id"))
+
+        doc_id = _safe_int(document_id)
+        if doc_id is None:
             return jsonify({"error": "document id required"}), 400
+
 
         # Fetch the document (enforce ownership)
         try:
@@ -770,18 +841,16 @@ def create_app():
     @require_auth
     def create_watermark(document_id: int | None = None):
         # accept id from path, query (?id= / ?documentid=), or JSON body on GET
-        if not document_id:
-            document_id = (
-                request.args.get("id")
-                or request.args.get("documentid")
-                or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
-            )
-        try:
-            doc_id = document_id
-        except (TypeError, ValueError):
+        # accept id from path, query (?id= / ?documentid=), or JSON body
+        if document_id is None:
+            j = _json_dict()  # safe: gives {} if body is missing/not a dict
+            document_id = request.args.get("id") or request.args.get("documentid") or _safe_int(j.get("id"))
+
+        doc_id = _safe_int(document_id)
+        if doc_id is None:
             return jsonify({"error": "document id required"}), 400
             
-        payload = request.get_json(silent=True) or {}
+        payload = _json_dict()
         # allow a couple of aliases for convenience /Sandra
         method = payload.get("method")
         intended_for = payload.get("intended_for")
@@ -790,10 +859,6 @@ def create_app():
         key = payload.get("key")
 
         # validate input
-        try:
-            doc_id = int(doc_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "document_id (int) is required"}), 400
         if not method or not intended_for or not isinstance(secret, str) or not isinstance(key, str):
             return jsonify({"error": "method, intended_for, secret, and key are required"}), 400
 
@@ -1016,29 +1081,33 @@ def create_app():
     @require_auth
     def read_watermark(document_id: int | None = None):
     # Get document-ID from path, query (?id=/ ?documentid=) or body /Sandra
-        if not document_id:
-            document_id = (
-                request.args.get("id")
-                or request.args.get("documentid")
-                or (request.is_json and (request.get_json(silent=True) or {}).get("id"))
-            )
-        try:
-            doc_id = int(document_id)
-        except (TypeError, ValueError):
+        if document_id is None:
+            j = _json_dict()
+            document_id = request.args.get("id") or request.args.get("documentid") or _safe_int(j.get("id"))
+
+        doc_id = _safe_int(document_id)
+        if doc_id is None:
             return jsonify({"error": "document id required"}), 400
 
-        payload = request.get_json(silent=True) or {}
-        method   = payload.get("method")
-        key      = payload.get("key")
-        position = payload.get("position") or None
-        link     = payload.get("link") # NEW: Support to read through the link/Sandra
-        version_id = payload.get("version_id") or payload.get("versionId")  #so they only need a key/Sandra
+        payload = _json_dict()
+        method     = payload.get("method")
+        key        = payload.get("key")
+        position   = payload.get("position") or None
+        link       = payload.get("link")
+        version_id = payload.get("version_id") or payload.get("versionId")
+
+        # Changed during fuzzing specilization task /Adna
+        if link is not None and not isinstance(link, str):
+            return jsonify({"error": "link must be a string"}), 400
+        vid = _safe_int(version_id)
+        if version_id is not None and vid is None:
+            return jsonify({"error": "version_id must be an integer"}), 400
 
     # CHANGED /Sandra
         if not isinstance(key, str):
-            return jsonify({"error": "key is required"}), 400 #Added/Sandnra
+            return jsonify({"error": "key is required"}), 400
 
-        storage_root = Path(app.config["STORAGE_DIR"]).resolve()  # MOVED/Sandrsa
+        storage_root = Path(app.config["STORAGE_DIR"]).resolve()
 
 #I changed this so they only need the key and not method /Sandra
         try:
@@ -1056,7 +1125,7 @@ def create_app():
                             AND d.ownerid = :uid
                             LIMIT 1
                         """),
-                        {"vid": int(version_id), "did": doc_id, "uid": int(g.user["id"])},
+                        {"vid": vid, "did": int(doc_id), "uid": int(g.user["id"])},
                     ).first()
                     if not vrow:
                         return jsonify({"error": "version not found"}), 404

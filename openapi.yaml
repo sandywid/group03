@@ -1,0 +1,215 @@
+#Added this for the fuzzing specialization task /Adna
+openapi: 3.0.0
+info:
+  title: Tatou API (minimal for fuzzing)
+  version: "0.1.0"
+servers:
+  - url: http://localhost:5000
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+
+  /api/create-user:
+    post:
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password, email]
+              properties:
+                login: { type: string, minLength: 3, maxLength: 64 }
+                password: { type: string, minLength: 6 }
+                email: { type: string, format: email }
+      responses:
+        '201': { description: Created }
+        '200': { description: OK }
+        '400': { description: Bad request }
+
+  /api/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: OK }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+
+  /api/upload-document:
+    post:
+      summary: Upload PDF
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, name]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+      responses:
+        '201': { description: Created }
+        '200': { description: OK }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '415': { description: Unsupported media type }
+
+  /api/list-documents:
+    get:
+      summary: List documents
+      responses:
+        '200': { description: OK }
+        '401': { description: Unauthorized }
+
+  /api/get-document/{document_id}:
+    get:
+      summary: Get a document (PDF)
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf: {}
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /api/delete-document/{document_id}:
+    delete:
+      summary: Delete a document
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Deleted }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /api/list-versions/{document_id}:
+    get:
+      summary: List versions for a document
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: OK }
+        '401': { description: Unauthorized }
+
+  /api/create-watermark/{document_id}:
+    post:
+      summary: Create a watermarked version
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, intended_for, secret, key]
+              properties:
+                method: { type: string }
+                position: { type: string, nullable: true }
+                key: { type: string }
+                secret: { type: string }
+                intended_for: { type: string }
+      responses:
+        '201': { description: Created }
+        '200': { description: OK }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+
+  /api/read-watermark:
+    post:
+      summary: Read watermark (body carries document id)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                version_id: { type: integer }
+                link: { type: string }
+                key: { type: string }
+      responses:
+        '200': { description: OK }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /api/read-watermark/{document_id}:
+    post:
+      summary: Read watermark (path doc id)
+      parameters:
+        - in: path
+          name: document_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version_id: { type: integer }
+                link: { type: string }
+                key: { type: string }
+      responses:
+        '200': { description: OK }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+
+  /api/get-watermarking-methods:
+    get:
+      summary: List supported watermarking methods
+      responses:
+        '200': { description: OK }
+
+  /api/get-version/{link}:
+    get:
+      summary: Public download of a version by link
+      parameters:
+        - in: path
+          name: link
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf: {}
+        '404': { description: Not found }
