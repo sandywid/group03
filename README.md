@@ -51,7 +51,7 @@ docker compose logs -f
 
 # Run all tests
 cd server
-LOG_PATH=logs/app.log python -m pytest
+LOG_PATH=logs/app.log python -m pytest -v
 
 # Test if the API is up
 http -v :5000/healthz
