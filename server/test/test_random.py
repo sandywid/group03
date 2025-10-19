@@ -1,4 +1,4 @@
-# server/test/random_test.py
+# server/test/test_random.py
 import io
 import random, string
 
