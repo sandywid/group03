@@ -63,7 +63,7 @@ http -v :5000/healthz
 
 Code coverage is measured using **pytest-cov**, with reports displayed both in the terminal and as an interactive HTML report.
 
-Run the tests locally with:
+Run the tests locally in the root directory with:
 
 ```bash
 LOG_PATH=logs/app.log python -m pytest
