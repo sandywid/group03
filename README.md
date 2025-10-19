@@ -59,5 +59,19 @@ http -v :5000/healthz
 # Open your browser at 127.0.0.1:5000 to check if the website is up.
 ```
 
+## Coverage Analysis
+
+Code coverage is measured using **pytest-cov**, with reports displayed both in the terminal and as an interactive HTML report.
+
+Run the tests locally with:
+
+```bash
+LOG_PATH=logs/app.log python -m pytest
+
+# After the run, a detailed report will be available at:
+htmlcov/index.html
+```
+
+
 
 
