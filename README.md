@@ -28,8 +28,8 @@ python3 -m venv .venv
 # Install the necessary dependencies
 python -m pip install -e ".[dev]"
 
-# Run the unit tests
-LOG_PATH=logs/app.log python -m pytest
+# Run the unit tests, skipped = not unittest
+LOG_PATH=logs/app.log python -m pytest -v 
 ```
 
 ### Deploy
