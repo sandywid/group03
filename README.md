@@ -50,6 +50,7 @@ docker compose up --build -d
 docker compose logs -f
 
 # Run all tests
+cd server
 LOG_PATH=logs/app.log python -m pytest
 
 # Test if the API is up
