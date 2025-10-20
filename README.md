@@ -28,7 +28,7 @@ python3 -m venv .venv
 # Install the necessary dependencies
 python -m pip install -e ".[dev]"
 
-# Run the unit tests, skipped = not unittest
+# Run the unit test. Skipped = require containers to be composed up
 LOG_PATH=logs/app.log python -m pytest -v 
 ```
 
