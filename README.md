@@ -29,7 +29,11 @@ python3 -m venv .venv
 python -m pip install -e ".[dev]"
 
 # Run the unit test. Skipped = require containers to be composed up
-LOG_PATH=logs/app.log python -m pytest -v 
+LOG_PATH=logs/app.log python -m pytest -v
+
+#Coverage raport
+LOG_PATH=logs/app.log pytest --cov=server --cov-report=html
+
 ```
 
 ### Deploy
