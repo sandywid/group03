@@ -32,7 +32,7 @@ python -m pip install -e ".[dev]"
 LOG_PATH=logs/app.log python -m pytest -v
 
 #Coverage raport
-LOG_PATH=logs/app.log pytest --cov=server --cov-report=html
+
 
 ```
 
