@@ -1231,31 +1231,13 @@ def create_app():
                 secret=secret_payload,
                 key="rmap_session_key_2025", #I know it should not be here but i got too angry cause it dit not work to move it :) /Sandra
                 position=None,
-            )
 
-
-            out_path.write_bytes(watermarked_bytes)
-            return str(out_path)
-        except Exception:
-            pass
-
-        # --- fallback 1 ---
-        try:
-            from add_stamp import add_stamp
-            watermarked_bytes = add_stamp(
-                pdf=str(BASE_PDF),
-                secret=str(link_secret),
-                position=None,
             )
             out_path.write_bytes(watermarked_bytes)
             return str(out_path)
-        except Exception:
-            pass
-
-        # --- sista fallback: kopiera originalet ---
-        out_path.write_bytes(Path(BASE_PDF).read_bytes())
-        return str(out_path)
-
+        except Exception as e:
+            # Viktigt: inget tyst pass – faila hårt så buggar inte maskeras
+            raise RuntimeError(f"Watermarking failed: {e}")
 
     def _store_rmap_version(link_hex: str, path: str) -> None:
         """
@@ -1415,6 +1397,9 @@ def create_app():
         return jsonify(error="rate_limited", detail=str(e.description)), 429
 
 
+    create_app.user_or_ip = user_or_ip
+    create_app.login_key = login_key
+    create_app.ratelimit_handler = ratelimit_handler
 
     return app
     
