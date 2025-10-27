@@ -17,7 +17,8 @@ dependencies = [
 	"pypdf>=4.0.0", #added for my WM method/Adna
   	"cryptography>=42.0.0", #added for my WM method /Adna
 	"python-json-logger==2.0.7", #added for logging /Sandra
-	"python-dotenv>=1.0" #added for testing /Adna
+	"python-dotenv>=1.0", #added for testing /Adna
+	"pytest-timeout>=2.3.1" #added for local test stability /Sandra
 
 ]
 
