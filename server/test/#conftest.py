@@ -1,116 +1,49 @@
-# conftest.py — pytest utan Docker/MariaDB: SQLite + kompatibilitet & robust ordning
+# conftest.py — pytest utan Docker/MariaDB: SQLite + kompatibilitetsfunktioner
 import os
 import io
+import random
+import string
 import pathlib
 import sqlite3
 import pytest
 from sqlalchemy import create_engine, text, event
-from sqlalchemy.engine import Engine
 
-
-# ==========================================================
-# Bas: miljö & adapters
-# ==========================================================
-
-# Stäng av rate limiting i tester
-os.environ.setdefault("RATELIMIT_ENABLED", "0")
-os.environ.setdefault("RATELIMIT_STORAGE_URI", "memory://")
-
-# Gör så att sqlite3 kan binda pathlib.Path (och underklasser) som TEXT
-sqlite3.register_adapter(pathlib.Path, lambda p: str(p))
-if hasattr(pathlib, "PosixPath"):
-    sqlite3.register_adapter(pathlib.PosixPath, lambda p: str(p))
-if hasattr(pathlib, "WindowsPath"):
-    sqlite3.register_adapter(pathlib.WindowsPath, lambda p: str(p))
-
-
-# ==========================================================
-# Klass-nivå hook: gäller ALLA Engines vid varje ny SQLite-connection
-# Säkerställer att UNHEX/HEX/LAST_INSERT_ID finns oavsett ordning.
-# ==========================================================
-@event.listens_for(Engine, "connect")
-def _sqlite_mysql_compat(dbapi_conn, _):
-    # Körs även för andra DBAPI, men create_function finns på sqlite3-conn.
-    try:
-        dbapi_conn.execute("PRAGMA foreign_keys=ON;")
-    except Exception:
-        pass
-
-    # MariaDB-kompatibelt LAST_INSERT_ID()
-    def _last_insert_id():
-        cur = dbapi_conn.execute("SELECT last_insert_rowid();")
-        row = cur.fetchone()
-        return row[0] if row else None
-    try:
-        dbapi_conn.create_function("LAST_INSERT_ID", 0, _last_insert_id)
-    except Exception:
-        pass
-
-    # UNHEX(str) -> bytes (tål 0x-prefix och udda längd; ogiltig hex -> NULL)
-    def _unhex(val):
-        if val is None:
-            return None
-        if isinstance(val, (bytes, bytearray)):
-            return bytes(val)
-        s = str(val).strip()
-        if s.startswith(("0x", "0X")):
-            s = s[2:]
-        if len(s) % 2 == 1:
-            s = "0" + s
-        try:
-            return bytes.fromhex(s)
-        except ValueError:
-            return None
-    try:
-        dbapi_conn.create_function("UNHEX", 1, _unhex)
-    except Exception:
-        pass
-
-    # HEX(x) -> övre hexsträng, likt MySQL
-    def _hex(val):
-        if val is None:
-            return None
-        if isinstance(val, str):
-            val = val.encode()
-        if isinstance(val, (bytes, bytearray, memoryview)):
-            return bytes(val).hex().upper()
-        if isinstance(val, int):
-            h = hex(val)[2:]
-            if len(h) % 2 == 1:
-                h = "0" + h
-            return h.upper()
-        return str(val).encode().hex().upper()
-    try:
-        dbapi_conn.create_function("HEX", 1, _hex)
-    except Exception:
-        pass
-
-
-# ==========================================================
-# Autouse app-context i alla tester (slipper "Working outside app context")
-# ==========================================================
 @pytest.fixture(autouse=True)
 def _app_ctx():
     import server
     with server.app.app_context():
         yield
 
+# Gör så att sqlite3 kan binda pathlib.Path som TEXT
+# Bas-klassen (bra att behålla)
+sqlite3.register_adapter(pathlib.Path, lambda p: str(p))
+
+# Viktigt: registrera underklasser också
+if hasattr(pathlib, "PosixPath"):
+    sqlite3.register_adapter(pathlib.PosixPath, lambda p: str(p))
+if hasattr(pathlib, "WindowsPath"):
+    sqlite3.register_adapter(pathlib.WindowsPath, lambda p: str(p))
+
+# Stäng av rate limiting i tester
+os.environ.setdefault("RATELIMIT_ENABLED", "0")
+os.environ.setdefault("RATELIMIT_STORAGE_URI", "memory://")
 
 # ==========================================================
-# Installera engine + schema och injicera i appen
+# Engine + schema
 # ==========================================================
+
 @pytest.fixture(scope="session", autouse=True)
 def _install_sqlite_engine_and_schema():
     """
-    Skapa en filbaserad SQLite-engine för tester, injicera i appen,
-    se till att klass-hooken ovan hinner appliceras, och skapa minimalt schema.
+    Skapa en SQLite-engine för tester, lägg till en MariaDB-kompatibel
+    LAST_INSERT_ID(), initiera ett minimalt schema, och injicera engine i appen.
     """
     from server import app
 
     sqlite_path = pathlib.Path("test_db.sqlite").absolute()
     engine = create_engine(f"sqlite:///{sqlite_path}", future=True)
 
-    # Konvertera Path-parametrar → str innan execute (för säkerhets skull)
+    # -- Fångar alla queries och konverterar Path-objekt till str innan execute --
     @event.listens_for(engine, "before_cursor_execute")
     def _coerce_path_params(conn, cursor, statement, parameters, context, executemany):
         def coerce(v):
@@ -133,14 +66,26 @@ def _install_sqlite_engine_and_schema():
         elif isinstance(parameters, (list, tuple)):
             context.parameters = tuple(coerce(v) for v in parameters)
 
-    # Peka appen på denna engine
+    # -- Kompatibilitet för MariaDB-saker (LAST_INSERT_ID osv.) --
+    @event.listens_for(engine, "connect")
+    def _sqlite_on_connect(dbapi_conn, _):
+        try:
+            dbapi_conn.execute("PRAGMA foreign_keys=ON;")
+        except Exception:
+            pass
+
+        def _last_insert_id():
+            cur = dbapi_conn.execute("SELECT last_insert_rowid();")
+            row = cur.fetchone()
+            return row[0] if row else None
+
+        dbapi_conn.create_function("LAST_INSERT_ID", 0, _last_insert_id)
+
+    # Injicera engine i appen så server.py använder denna istället
     app.config["_ENGINE"] = engine
     app.config["TESTING"] = True
 
-    # Viktigt: töm poolen så att nästa connect blir "ny" och träffas av klass-hooken
-    engine.dispose()
-
-    # Minimalt schema + index
+    # Skapa schema
     ddl = [
         "DROP TABLE IF EXISTS Versions;",
         """
@@ -181,13 +126,13 @@ def _install_sqlite_engine_and_schema():
         "CREATE INDEX IF NOT EXISTS idx_versions_doc ON Versions(documentid);",
         "CREATE INDEX IF NOT EXISTS idx_versions_link ON Versions(link);",
     ]
+
     with engine.begin() as conn:
         for stmt in ddl:
             conn.execute(text(stmt))
 
     yield
 
-    # Städning
     try:
         engine.dispose()
         if sqlite_path.exists():
@@ -199,6 +144,7 @@ def _install_sqlite_engine_and_schema():
 # ==========================================================
 # Test client
 # ==========================================================
+
 @pytest.fixture(scope="function")
 def client():
     from server import app
@@ -206,12 +152,17 @@ def client():
 
 
 # ==========================================================
-# Hjälpfunktioner & fixtures som testerna använder
+# Hjälpfunktioner
 # ==========================================================
+
 def _rand(n=6) -> str:
     import string, random
     return ''.join(random.choice(string.ascii_lowercase) for _ in range(n))
 
+
+# ==========================================================
+# Fixtures som testerna använder
+# ==========================================================
 
 @pytest.fixture(scope="session")
 def auth_token():
