@@ -48,33 +48,16 @@ def test_upload_rejects_non_pdf(client, auth_headers):
     # Expect a client error (not a server crash)
     assert r.status_code in (400, 415), r.get_data(as_text=True)
 
-
 def test_upload_rejects_bad_name(client, auth_headers, tiny_valid_pdf_bytes):
-    # tiny_valid_pdf_bytes kan vara BytesIO eller bytes. Hantera båda.
-    pdf_obj = (
-        io.BytesIO(tiny_valid_pdf_bytes)
-        if isinstance(tiny_valid_pdf_bytes, (bytes, bytearray))
-        else tiny_valid_pdf_bytes
-    )
-    # Se till att filpekaren står i början
-    try:
-        pdf_obj.seek(0)
-    except Exception:
-        pass
-
-    # Försök path traversal i 'name'
-    data = {"file": (pdf_obj, "report.pdf"), "name": "../etc/passwd"}
-
+    # Attempt path traversal in 'name'
+    data = {"file": (io.BytesIO(tiny_valid_pdf_bytes), "report.pdf"), "name": "../etc/passwd"}
     r = client.post(
         "/api/upload-document",
         headers=auth_headers,
         data=data,
         content_type="multipart/form-data",
     )
-
-    # Förväntat: servern ska neka (typ 400)
     assert r.status_code in (400, 422), r.get_data(as_text=True)
-
 
 # PUBLIC / LINKED VERSIONS
 

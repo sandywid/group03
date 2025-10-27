@@ -7,8 +7,6 @@ import importlib
 import threading
 from werkzeug.serving import make_server
 
-pytest.skip("Schemathesis-fuzz needs running server with OpenAPI-schema – skipped local pytest-enivorment", allow_module_level=True)
-
 # Sets logpath early
 os.environ.setdefault("LOG_PATH", "logs/app.log")
 os.makedirs(os.path.dirname(os.environ["LOG_PATH"]), exist_ok=True)
