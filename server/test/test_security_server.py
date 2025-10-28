@@ -718,11 +718,11 @@ class TestRMAPProtocolSecurity:
 
 
 # ============================================================================
-# TEST SUITE 6: RATE LIMITING AND BRUTE FORCE
+# TEST SUITE 6: Point-less test -  kind of :)
 # ============================================================================
 
 class TestRateLimitingAndBruteForce:
-    """Tests for rate limiting and brute-force protection."""
+    
     
     def test_login_brute_force_attempt(self, client):
         """Simulate brute-force login attempts."""
@@ -772,8 +772,7 @@ class TestRateLimitingAndBruteForce:
                 # Rate limit hit
                 break
         
-        # Either all requests go through (no limit) or we hit a limit
-        # Good security should have limits
+        # wont hit limit since it's turned off
         assert len(responses) > 0
 
 
@@ -987,9 +986,9 @@ class TestFullAttackSimulation:
         recon_results = {'endpoints_found': [], 'errors': []}
         
         test_endpoints = [
-            '/api/documents',
+            '/api/get-document',
             '/api/users',
-            '/api/watermark',
+            '/api/create-watermark',
             '/api/rmap-initiate',
             '/health',
             '/healthz',
