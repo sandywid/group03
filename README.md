@@ -32,6 +32,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -v
 
 #Coverage raport
+python -m pytest -q --cov=src --cov-report=html --cov-branch
 
 
 ```
