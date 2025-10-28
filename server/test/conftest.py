@@ -6,7 +6,11 @@ import sqlite3
 import pytest
 from sqlalchemy import create_engine, text, event
 from sqlalchemy.engine import Engine
+from pathlib import Path
 
+LOG_PATH = Path("logs/app.log").absolute()
+os.environ.setdefault("LOG_PATH", str(LOG_PATH))
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ==========================================================
 # Bas: miljö & adapters
