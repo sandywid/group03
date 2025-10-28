@@ -47,9 +47,9 @@ class TestTokenForgingAndAuth:
     def test_missing_token_returns_401(self, client):
         """Verify that requests without tokens are rejected."""
         response = client.get('/api/get-document')
-        # Accept both 401 (explicit auth error) and 404 (hiding endpoint)
-        assert response.status_code in [401, 404], \
-            f"Missing token should return 401 or 404, got {response.status_code}"
+        # Accept both 401 (explicit auth error)
+        assert response.status_code in [401], \
+            f"Missing token should return 401 {response.status_code}"
     
     def test_invalid_token_formats(self, client):
         """
@@ -75,8 +75,8 @@ class TestTokenForgingAndAuth:
                 '/api/get-document',
                 headers={'Authorization': f'Bearer {token}'}
             )
-            # Accept 401, 400, 422, or 404 (hiding endpoint)
-            assert response.status_code in [401, 400, 422, 404], \
+            # Accept 401, 400, 422
+            assert response.status_code in [401, 400, 422], \
                 f"Token '{token[:50]}' should be rejected, got {response.status_code}"
     
     def test_token_without_bearer_prefix(self, client, auth_token):
@@ -86,8 +86,8 @@ class TestTokenForgingAndAuth:
             '/api/get-document',
             headers={'Authorization': auth_token}
         )
-        # Should fail - accept 401, 400, or 404
-        assert response.status_code in [401, 400, 404], \
+        # Should fail - accept 401, 400,
+        assert response.status_code in [401, 400], \
             f"Token without Bearer prefix should be rejected, got {response.status_code}"
     
     def test_case_sensitive_bearer_prefix(self, client, auth_token):
@@ -99,8 +99,8 @@ class TestTokenForgingAndAuth:
                 '/api/get-document',
                 headers={'Authorization': f'{variant} {auth_token}'}
             )
-            # Should not accept case variations - accept 401, 400, or 404
-            assert response.status_code in [401, 400, 404], \
+            # Should not accept case variations - accept 401, 400
+            assert response.status_code in [401, 400], \
                 f"'{variant}' should not be accepted, got {response.status_code}"
     
     def test_token_in_query_parameter(self, client, auth_token):
@@ -109,8 +109,8 @@ class TestTokenForgingAndAuth:
         Tokens in URLs can leak via logs, referrer headers, browser history.
         """
         response = client.get(f'/api/get-document?token={auth_token}')
-        # Should fail - tokens should only be in headers (401, 400, or 404)
-        assert response.status_code in [401, 400, 404], \
+        # Should fail - tokens should only be in headers (401, 400
+        assert response.status_code in [401, 400], \
             f"Tokens in query params should be rejected, got {response.status_code}"
     
     def test_document_enumeration_without_auth(self, client):
@@ -132,7 +132,7 @@ class TestTokenForgingAndAuth:
             elif response.status_code == 404:
                 not_found_count += 1
         
-        # All should require authentication (401, 403) or hide behind 404
+        # All should require authentication (401, 403) 
         total_blocked = unauthorized_count + forbidden_count + not_found_count
         assert total_blocked == 20, \
             f"All document accesses should be blocked, got {total_blocked}/20"
@@ -151,8 +151,8 @@ class TestTokenForgingAndAuth:
                 '/api/get-document',
                 headers={'Authorization': f'Bearer {payload}'}
             )
-            # Should be rejected with 401, 400, 422, or 404
-            assert response.status_code in [401, 400, 422, 404], \
+            # Should be rejected with 401, 400, 422, 
+            assert response.status_code in [401, 400, 422], \
                 f"SQLi payload should be rejected: {payload}, got {response.status_code}"
 
 
@@ -180,8 +180,8 @@ class TestWatermarkExploitation:
                 'key': 'test_key'
             }
         )
-        # Should require auth - accept 401, 403, 404, or 405
-        assert response.status_code in [401, 403, 404, 405], \
+        # Should require auth - accept 401, 403, or 405
+        assert response.status_code in [401, 403, 405], \
             f"Watermark creation should require authentication, got {response.status_code}"
     
     def test_watermark_document_id_enumeration(self, client):
@@ -246,8 +246,8 @@ class TestWatermarkExploitation:
                 'key': 'test_key'
             }
         )
-        # Should reject negative IDs - accept various error codes including 405, 404
-        assert response.status_code in [400, 404, 422, 500, 405], \
+        # Should reject negative IDs - accept various error codes including 405, 
+        assert response.status_code in [400, 422, 500, 405], \
             f"Negative document IDs should be rejected, got {response.status_code}"
     
     def test_watermark_sql_injection_in_document_id(self, client, auth_headers):
@@ -285,7 +285,7 @@ class TestWatermarkExploitation:
                 'key': 'test_key'
             }
         )
-        # Should require auth - accept 401, 403, 404, or 405 (method not allowed)
+        # Should require auth - accept 401, 403, or 405 (method not allowed)
         assert response.status_code in [401, 403, 404, 405], \
             f"Watermark reading should require authentication, got {response.status_code}"
     
@@ -312,8 +312,8 @@ class TestWatermarkExploitation:
                 }
             )
             # Should sanitize/reject malicious methods - accept various error codes
-            # 400 = bad request, 404 = not found, 405 = method not allowed
-            assert response.status_code in [400, 404, 422, 500, 200, 405], \
+            # 400 = bad request, 405 = method not allowed
+            assert response.status_code in [400, 422, 500, 200, 404, 405], \
                 f"Malicious method handled, got {response.status_code} for: {method}"
 
 
@@ -695,7 +695,7 @@ class TestRMAPProtocolSecurity:
         )
         
         # Should fail - no valid session
-        assert response.status_code in [400, 404]
+        assert response.status_code in [400]
     
     def test_rmap_replay_attack(self, client):
         """Test if RMAP messages can be replayed."""
@@ -1010,8 +1010,8 @@ class TestFullAttackSimulation:
             )
             forged_tokens_tested += 1
             
-            # If we get anything other than 401 or 404, it's suspicious
-            if response.status_code not in [401, 404]:
+            # If we get anything other than 401, it's suspicious
+            if response.status_code not in [401]:
                 recon_results['errors'].append(f'Unexpected status for fake token: {response.status_code}')
         
         # Phase 3: Document ID enumeration
