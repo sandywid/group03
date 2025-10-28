@@ -46,7 +46,7 @@ class TestTokenForgingAndAuth:
     
     def test_missing_token_returns_401(self, client):
         """Verify that requests without tokens are rejected."""
-        response = client.get('/api/documents')
+        response = client.get('/api/get-document')
         # Accept both 401 (explicit auth error) and 404 (hiding endpoint)
         assert response.status_code in [401, 404], \
             f"Missing token should return 401 or 404, got {response.status_code}"
@@ -72,7 +72,7 @@ class TestTokenForgingAndAuth:
         
         for token in invalid_tokens:
             response = client.get(
-                '/api/documents',
+                '/api/get-document',
                 headers={'Authorization': f'Bearer {token}'}
             )
             # Accept 401, 400, 422, or 404 (hiding endpoint)
@@ -83,7 +83,7 @@ class TestTokenForgingAndAuth:
         """Test if tokens work without 'Bearer' prefix (common misconfiguration)."""
         # Try direct token without Bearer
         response = client.get(
-            '/api/documents',
+            '/api/get-document',
             headers={'Authorization': auth_token}
         )
         # Should fail - accept 401, 400, or 404
@@ -96,7 +96,7 @@ class TestTokenForgingAndAuth:
         
         for variant in variants:
             response = client.get(
-                '/api/documents',
+                '/api/get-document',
                 headers={'Authorization': f'{variant} {auth_token}'}
             )
             # Should not accept case variations - accept 401, 400, or 404
@@ -108,7 +108,7 @@ class TestTokenForgingAndAuth:
         Test if tokens can be passed via query parameters (security risk).
         Tokens in URLs can leak via logs, referrer headers, browser history.
         """
-        response = client.get(f'/api/documents?token={auth_token}')
+        response = client.get(f'/api/get-document?token={auth_token}')
         # Should fail - tokens should only be in headers (401, 400, or 404)
         assert response.status_code in [401, 400, 404], \
             f"Tokens in query params should be rejected, got {response.status_code}"
@@ -124,7 +124,7 @@ class TestTokenForgingAndAuth:
         not_found_count = 0
         
         for doc_id in range(1, 21):
-            response = client.get(f'/api/documents/{doc_id}')
+            response = client.get(f'/api/get-document/{doc_id}')
             if response.status_code == 401:
                 unauthorized_count += 1
             elif response.status_code == 403:
@@ -148,7 +148,7 @@ class TestTokenForgingAndAuth:
         
         for payload in sqli_payloads:
             response = client.get(
-                '/api/documents',
+                '/api/get-document',
                 headers={'Authorization': f'Bearer {payload}'}
             )
             # Should be rejected with 401, 400, 422, or 404
