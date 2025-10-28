@@ -1,3 +1,4 @@
+# test/test_watermarking_cli_finish.py  (uppdaterad för att undvika prompts)
 import io
 import sys
 import argparse
@@ -57,6 +58,11 @@ def _build_parser():
 
 
 def _synthesize_args(subparser, tmp_path: Path):
+    """
+    Bygg argv för ett subkommando. För att undvika prompts:
+    - lägg alltid på --secret och --key om flaggorna existerar,
+      även när de INTE är required.
+    """
     inp = tmp_path / "in.pdf"
     outp = tmp_path / "out.pdf"
     inp.write_bytes(_make_pdf_bytes())
@@ -69,14 +75,19 @@ def _synthesize_args(subparser, tmp_path: Path):
     }
 
     argv = []
+    added_dests = set()
+
     for a in subparser._actions:
         if not a.option_strings:  # positional
             if "out" in a.dest or "dst" in a.dest:
                 argv.append(stub["out"])
+                added_dests.add(a.dest)
             elif "in" in a.dest or "src" in a.dest:
                 argv.append(stub["in"])
+                added_dests.add(a.dest)
             else:
                 argv.append("arg")
+                added_dests.add(a.dest)
             continue
 
         if getattr(a, "required", False):
@@ -98,6 +109,23 @@ def _synthesize_args(subparser, tmp_path: Path):
                     argv += [flag, stub["tag"]]
                 else:
                     argv += [flag, "1"]
+            added_dests.add(a.dest)
+
+    # --- Extra: injicera secret/key ÄVEN om de inte var required ---
+    # Hitta flaggor som finns, men inte lades till ovan.
+    def _ensure_flag(dest_name, value):
+        for a in subparser._actions:
+            if a.option_strings and a.dest == dest_name and dest_name not in added_dests:
+                # välj sista (vanligtvis den långa) flaggan
+                argv.extend([a.option_strings[-1], value])
+                added_dests.add(dest_name)
+                break
+
+    _ensure_flag("secret", stub["secret"])
+    _ensure_flag("key", stub["key"])
+    # payload behövs inte för att undvika prompts, men lägg gärna med om det finns:
+    _ensure_flag("payload", stub["payload"])
+
     return argv
 
 
