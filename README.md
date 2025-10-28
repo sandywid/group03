@@ -31,10 +31,11 @@ python -m pip install -e ".[dev]"
 # Run the unit test. Skipped = require containers to be composed up
 python -m pytest -v
 
-#Coverage raport
+#Coverage report
 python -m pytest -q --cov=src --cov-report=html --cov-branch
 
-
+# After the run, a detailed report will be available at:
+htmlcov/index.html
 ```
 
 ### Deploy
@@ -62,19 +63,6 @@ python -m pytest -v
 http -v :5000/healthz
 
 # Open your browser at 127.0.0.1:5000 to check if the website is up.
-```
-
-## Coverage Analysis
-
-Code coverage is measured using **pytest-cov**, with reports displayed both in the terminal and as an interactive HTML report.
-
-Run the tests locally in the root directory with:
-
-```bash
-LOG_PATH=logs/app.log python -m pytest
-
-# After the run, a detailed report will be available at:
-htmlcov/index.html
 ```
 
 
